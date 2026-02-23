@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Zoho CRM Quick Replies</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      width: 380px;
+      min-height: 200px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 14px;
+      color: #333;
+      background: #f5f6fa;
+    }
+
+    header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 14px 16px;
+      font-size: 15px;
+      font-weight: 600;
+    }
+
+    .container { padding: 14px; }
+
+    .alert {
+      padding: 8px 12px;
+      border-radius: 6px;
+      margin-bottom: 12px;
+      font-size: 13px;
+    }
+    .alert.hidden { display: none; }
+    .alert-success { background: #d4edda; color: #155724; border-left: 4px solid #28a745; }
+    .alert-error   { background: #f8d7da; color: #721c24; border-left: 4px solid #dc3545; }
+
+    form { background: white; border-radius: 8px; padding: 12px; margin-bottom: 14px; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+
+    label { display: block; font-size: 12px; font-weight: 600; color: #555; margin-bottom: 4px; }
+
+    input[type="text"], textarea {
+      width: 100%;
+      padding: 8px 10px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      font-size: 13px;
+      font-family: inherit;
+      margin-bottom: 10px;
+      transition: border-color .2s;
+    }
+    input[type="text"]:focus, textarea:focus { outline: none; border-color: #667eea; }
+    textarea { resize: vertical; min-height: 70px; }
+
+    button[type="submit"] {
+      width: 100%;
+      padding: 9px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity .2s;
+    }
+    button[type="submit"]:hover { opacity: .9; }
+
+    #repliesList { display: flex; flex-direction: column; gap: 8px; }
+
+    .reply-item {
+      background: white;
+      border-radius: 8px;
+      padding: 12px;
+      border-left: 3px solid #667eea;
+      box-shadow: 0 1px 4px rgba(0,0,0,.06);
+    }
+    .reply-title { font-weight: 600; font-size: 13px; margin-bottom: 4px; }
+    .reply-text  { font-size: 12px; color: #666; line-height: 1.4; margin-bottom: 8px; }
+
+    .reply-actions { display: flex; gap: 6px; }
+
+    .btn-small {
+      padding: 4px 10px;
+      border: none;
+      border-radius: 5px;
+      font-size: 12px;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .btn-edit   { background: #e9ecef; color: #333; }
+    .btn-edit:hover { background: #dee2e6; }
+    .btn-delete { background: #f8d7da; color: #721c24; }
+    .btn-delete:hover { background: #f5c6cb; }
+
+    .empty-state { text-align: center; padding: 30px 20px; color: #999; font-size: 13px; background: white; border-radius: 8px; }
+  </style>
+</head>
+<body>
+  <header>⚡ Quick Replies — Zoho CRM</header>
+
+  <div class="container">
+    <div id="alert" class="alert hidden"></div>
+
+    <form id="replyForm">
+      <label for="replyTitle">Título</label>
+      <input type="text" id="replyTitle" placeholder="Ex: Saudação inicial" required>
+
+      <label for="replyText">Texto da resposta</label>
+      <textarea id="replyText" placeholder="Digite o texto que será inserido..." required></textarea>
+
+      <button type="submit" id="submitBtn">Adicionar Resposta Rápida</button>
+    </form>
+
+    <div id="repliesList"></div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
