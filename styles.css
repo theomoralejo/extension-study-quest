@@ -1,5 +1,14 @@
 /* Quick Replies Extension Styles */
 
+:root {
+    --sq-primary: #0067A6;
+    /* Azul escuro principal */
+    --sq-primary-dark: #004773;
+    --sq-accent: #F28D19;
+    /* Laranja de destaque */
+    --sq-accent-dark: #E95320;
+}
+
 /* Botão Quick Replies */
 .quick-replies-btn {
     display: inline-flex !important;
@@ -12,7 +21,7 @@
 }
 
 .quick-replies-btn:hover {
-    background-color: rgba(102, 126, 234, 0.1) !important;
+    background-color: rgba(0, 103, 166, 0.1) !important;
 }
 
 .quick-replies-icon {
@@ -24,16 +33,18 @@
 /* Painel de Quick Replies */
 .quick-replies-panel {
     position: fixed;
-    width: 350px;
-    max-height: 450px;
-    background: white;
+    width: 400px;
+    max-height: 480px;
+    background: #f5f6fa;
     border-radius: 8px;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, .08);
     z-index: 999999;
     display: flex;
     flex-direction: column;
     overflow: hidden;
     animation: quickRepliesSlideIn 0.2s ease-out;
+    border: 1px solid #ddd;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
 @keyframes quickRepliesSlideIn {
@@ -41,6 +52,7 @@
         opacity: 0;
         transform: translateY(-10px);
     }
+
     to {
         opacity: 1;
         transform: translateY(0);
@@ -51,13 +63,15 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 15px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    padding: 16px 20px;
+    background: linear-gradient(135deg, var(--sq-primary) 0%, var(--sq-primary-dark) 100%);
     color: white;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    z-index: 2;
 }
 
 .quick-replies-title {
-    font-size: 14px;
+    font-size: 15px;
     font-weight: 600;
 }
 
@@ -83,31 +97,36 @@
 
 /* Campo de busca */
 .quick-replies-search {
-    padding: 12px 15px;
+    padding: 14px 20px;
+    background: white;
     border-bottom: 1px solid #e0e0e0;
 }
 
 .quick-replies-search-input {
     width: 100%;
-    padding: 8px 12px;
+    padding: 10px 12px;
     border: 1px solid #ddd;
     border-radius: 6px;
     font-size: 13px;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    transition: border-color 0.2s;
+    font-family: inherit;
+    transition: all .2s ease;
 }
 
 .quick-replies-search-input:focus {
     outline: none;
-    border-color: #667eea;
+    border-color: var(--sq-primary);
+    box-shadow: 0 0 0 3px rgba(0, 103, 166, 0.15);
 }
 
 /* Lista de respostas */
 .quick-replies-list {
     flex: 1;
     overflow-y: auto;
-    padding: 8px;
+    padding: 16px 20px;
     max-height: 340px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
 }
 
 .quick-replies-list::-webkit-scrollbar {
@@ -129,36 +148,39 @@
 
 /* Item de resposta */
 .quick-reply-item {
-    padding: 12px;
-    margin-bottom: 6px;
-    background: #f8f9fa;
-    border-radius: 6px;
+    padding: 14px;
+    margin-bottom: 0px;
+    background: white;
+    border-radius: 8px;
     cursor: pointer;
-    transition: all 0.2s;
-    border-left: 3px solid #667eea;
+    border-left: 4px solid var(--sq-accent);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, .08);
+    transition: transform .2s ease, box-shadow .2s ease;
 }
 
 .quick-reply-item:hover {
-    background: #e9ecef;
-    transform: translateX(2px);
-    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.15);
+    background: white;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
 .quick-reply-title {
     font-weight: 600;
-    font-size: 13px;
-    color: #333;
-    margin-bottom: 5px;
+    font-size: 14px;
+    color: var(--sq-primary-dark);
+    margin-bottom: 6px;
 }
 
 .quick-reply-text {
-    font-size: 12px;
+    font-size: 13px;
     color: #666;
-    line-height: 1.4;
+    line-height: 1.5;
     overflow: hidden;
     text-overflow: ellipsis;
     display: -webkit-box;
     -webkit-line-clamp: 2;
+    line-clamp: 2;
+    /* fix lint */
     -webkit-box-orient: vertical;
 }
 

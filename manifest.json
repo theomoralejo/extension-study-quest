@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Zoho CRM Quick Replies",
+  "name": "Study Quest Extension",
   "version": "1.0.0",
   "description": "Adicione respostas rápidas às notas do Zoho CRM",
   "permissions": [
@@ -19,14 +19,29 @@
       "128": "icons/icon128.png"
     }
   },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "icons/*"
+      ],
+      "matches": [
+        "https://*.zoho.com/*",
+        "https://*.zoho.eu/*"
+      ]
+    }
+  ],
   "content_scripts": [
     {
       "matches": [
         "https://*.zoho.com/crm/*",
         "https://*.zoho.eu/crm/*"
       ],
-      "js": ["content.js"],
-      "css": ["styles.css"],
+      "js": [
+        "content.js"
+      ],
+      "css": [
+        "styles.css"
+      ],
       "run_at": "document_idle"
     }
   ],
