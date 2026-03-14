@@ -9,7 +9,8 @@
   ],
   "host_permissions": [
     "https://*.zoho.com/*",
-    "https://*.zoho.eu/*"
+    "https://*.zoho.eu/*",
+    "https://cv.studyquestuk.com/*"
   ],
   "action": {
     "default_popup": "popup.html",

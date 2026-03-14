@@ -144,10 +144,15 @@
     }
 
     function loadQuickReplies(searchTerm = '') {
-        chrome.storage.sync.get(['quickReplies'], function (result) {
-            const replies = result.quickReplies || [];
-            displayQuickReplies(replies, searchTerm);
-        });
+        fetch('https://cv.studyquestuk.com/api/replies')
+            .then(res => res.json())
+            .then(replies => {
+                displayQuickReplies(replies || [], searchTerm);
+            })
+            .catch(err => {
+                console.error('Erro ao buscar respostas do backend:', err);
+                displayQuickReplies([], searchTerm);
+            });
     }
 
     function displayQuickReplies(replies, searchTerm = '') {
