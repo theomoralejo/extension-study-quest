@@ -96,8 +96,11 @@
                 </span>
                 <button class="quick-replies-close">✕</button>
             </div>
-            <div class="quick-replies-search">
-                <input type="text" placeholder="Buscar respostas rápidas..." class="quick-replies-search-input">
+            <div class="quick-replies-search" style="display: flex; gap: 8px;">
+                <input type="text" placeholder="Buscar respostas..." class="quick-replies-search-input" style="flex: 2;">
+                <select id="quickRepliesCategoryFilter" style="flex: 1; padding: 6px; border: 1px solid #ddd; border-radius: 6px; font-size: 12px;">
+                    <option value="">Categorias</option>
+                </select>
             </div>
             <div class="quick-replies-list" id="quickRepliesList">
                 <div class="quick-replies-loading">Carregando...</div>
@@ -116,6 +119,7 @@
         // Adicionar eventos
         panel.querySelector('.quick-replies-close').addEventListener('click', closeQuickRepliesPanel);
         panel.querySelector('.quick-replies-search-input').addEventListener('input', handleSearch);
+        panel.querySelector('#quickRepliesCategoryFilter').addEventListener('change', handleSearch);
 
         // Carregar respostas
         loadQuickReplies();
@@ -143,29 +147,46 @@
         }
     }
 
-    function loadQuickReplies(searchTerm = '') {
-        fetch('https://cv.studyquestuk.com/api/replies')
+    // Obter usuário da DOM do Zoho (Se não encontrar, manda null ou '')
+    function getZohoAuthor() {
+        const usernameElem = document.querySelector('a.profile_username span, .user-name, #userName');
+        if (usernameElem) {
+            return usernameElem.textContent.trim();
+        }
+        return '';
+    }
+
+    function loadQuickReplies(searchTerm = '', categoryFilter = '') {
+        fetch('https://cv.studyquestuk.com/api/replies', {
+            headers: { 'x-api-key': 'sq-54321-secret-key' }
+        })
             .then(res => res.json())
             .then(replies => {
-                displayQuickReplies(replies || [], searchTerm);
+                displayQuickReplies(replies || [], searchTerm, categoryFilter);
             })
             .catch(err => {
                 console.error('Erro ao buscar respostas do backend:', err);
-                displayQuickReplies([], searchTerm);
+                displayQuickReplies([], searchTerm, categoryFilter);
             });
     }
 
-    function displayQuickReplies(replies, searchTerm = '') {
+    function displayQuickReplies(replies, searchTerm = '', categoryFilter = '') {
         const listContainer = document.getElementById('quickRepliesList');
 
         if (!listContainer) return;
 
         let filteredReplies = replies;
+
+        if (categoryFilter && categoryFilter !== '') {
+            filteredReplies = filteredReplies.filter(r => r.category === categoryFilter);
+        }
+
         if (searchTerm) {
             const term = searchTerm.toLowerCase();
-            filteredReplies = replies.filter(reply =>
+            filteredReplies = filteredReplies.filter(reply =>
                 reply.title.toLowerCase().includes(term) ||
-                reply.text.toLowerCase().includes(term)
+                reply.text.toLowerCase().includes(term) ||
+                (reply.category && reply.category.toLowerCase().includes(term))
             );
         }
 
@@ -178,10 +199,28 @@
             return;
         }
 
+        // Extrair categorias para o select
+        const categories = [...new Set(replies.map(r => r.category || 'Geral'))].sort();
+        const selectElem = document.getElementById('quickRepliesCategoryFilter');
+        if (selectElem && selectElem.options.length <= 1) {
+            categories.forEach(cat => {
+                const opt = document.createElement('option');
+                opt.value = cat;
+                opt.textContent = cat;
+                selectElem.appendChild(opt);
+            });
+        }
+
         listContainer.innerHTML = filteredReplies.map(reply => `
             <div class="quick-reply-item" data-id="${reply.id}">
-                <div class="quick-reply-title">${escapeHtml(reply.title)}</div>
+                <div class="quick-reply-title">
+                    ${escapeHtml(reply.title)}
+                    <span style="font-size: 10px; background: #eee; padding: 2px 4px; border-radius: 4px; color: #555; margin-left: 4px;">
+                        ${escapeHtml(reply.category || 'Geral')}
+                    </span>
+                </div>
                 <div class="quick-reply-text">${escapeHtml(reply.text)}</div>
+                <div style="font-size: 10px; color: #888; margin-top: 4px;">Por: ${escapeHtml(reply.author || 'User')}</div>
             </div>
         `).join('');
 
@@ -196,9 +235,11 @@
         });
     }
 
-    function handleSearch(e) {
-        const searchTerm = e.target.value;
-        loadQuickReplies(searchTerm);
+    function handleSearch() {
+        if (!quickRepliesPanel) return;
+        const searchTerm = quickRepliesPanel.querySelector('.quick-replies-search-input').value;
+        const categoryFilter = quickRepliesPanel.querySelector('#quickRepliesCategoryFilter').value;
+        loadQuickReplies(searchTerm, categoryFilter);
     }
 
     function insertReplyIntoEditor(title, text) {
@@ -423,4 +464,14 @@
             injectionTarget.insertBefore(waBtn, injectionTarget.firstChild);
         }
     }
+
+    // Escutar pedidos do Popup (Ex: requisição do nome do usuario logado no Zoho)
+    chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
+        if (request.action === 'getAuthor') {
+            const authorName = getZohoAuthor();
+            sendResponse({ author: authorName });
+        }
+        return true;
+    });
+
 })();
