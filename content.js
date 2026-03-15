@@ -9,13 +9,21 @@
     // Inicializar quando a página carregar
     init();
 
+    let observerTimeout = null;
+
     function init() {
         console.log('Zoho Quick Replies Extension: Iniciando...');
 
-        // Observar mudanças no DOM para detectar quando o editor de notas aparece
+        // Observar mudanças no DOM usando uma versão debounced (evita travar o navegador)
         const observer = new MutationObserver(function (mutations) {
-            checkForNoteEditor();
-            checkForPhoneNumbers(); // Executar também para checar números de telefone
+            // Em vez de processar TUDO a cada mutação, espera o DOM acalmar 300ms
+            if (observerTimeout) clearTimeout(observerTimeout);
+            
+            observerTimeout = setTimeout(() => {
+                checkForNoteEditor();
+                checkForPhoneNumbers(); 
+                checkForInputs(); 
+            }, 300);
         });
 
         observer.observe(document.body, {
@@ -27,7 +35,26 @@
         setTimeout(() => {
             checkForNoteEditor();
             checkForPhoneNumbers();
-        }, 1000);
+            checkForInputs(); 
+            
+            // Buscar na inicialização e setar a flag
+            cacheZohoAuthorName();
+        }, 2000);
+
+        // Executar uma rotina bem mais leve a cada 30 segundos (isso evita freezing contínuo)
+        setInterval(() => {
+            cacheZohoAuthorName();
+        }, 30000);
+    }
+
+    function cacheZohoAuthorName() {
+        // Para n travar a UI, executa em uma micro-tarefa nativa do EventLoop
+        Promise.resolve().then(() => {
+            const author = getZohoAuthor();
+            if (author && chrome.storage && chrome.storage.local) {
+                chrome.storage.local.set({ zohoAuthor: author });
+            }
+        });
     }
 
     function checkForNoteEditor() {
@@ -147,13 +174,64 @@
         }
     }
 
-    // Obter usuário da DOM do Zoho (Se não encontrar, manda null ou '')
+    // Tentar localizar um nome no cache sincronizado do Chrome Extension primeiro
+    // Se não ou não mudou nada ainda, procura ativamente por elementos no DOM
     function getZohoAuthor() {
-        const usernameElem = document.querySelector('a.profile_username span, .user-name, #userName');
-        if (usernameElem) {
-            return usernameElem.textContent.trim();
+        try {
+            const selectors = [
+                '#show-user-name', 
+                '#userName', 
+                '.user-name', 
+                '[data-zcqa="user_profile_name"]', 
+                '.profile-name', 
+                '#top-band-profile-name',
+                'a.profile_username span',
+                '#profile_name',
+                '#topBand_user_name',
+                '.cp-setup-user-name',
+                '.usr-name',
+                '.user-profile-name',
+                '#zcdropdown1_text' // Selector específico às vezes usado no Header
+            ];
+            
+            for (const selector of selectors) {
+                const elem = document.querySelector(selector);
+                if (elem && elem.textContent && elem.textContent.trim().length > 0) {
+                    return elem.textContent.trim();
+                }
+            }
+            
+            // As vezes está dentro do texto alternativo ou título das fotos (não a genérica)
+            const userImg = document.querySelector('#crm-setup-userpic, #topBand_user_icon_img, .profile-pic img, img[alt*="Profile"]');
+            if (userImg) {
+                const alt = userImg.getAttribute('alt');
+                if (alt && alt.trim().length > 0 && alt.toLowerCase().indexOf('profile') === -1) {
+                    return alt.trim();
+                }
+                const title = userImg.getAttribute('title');
+                if (title && title.trim().length > 0 && title.toLowerCase().indexOf('profile') === -1) {
+                    return title.trim();
+                }
+            }
+
+            // Opcional limitador do class pattern (pesado). Reduzido para testar só primeiros 10 pra n travar.
+            const wildcardElems = document.querySelectorAll('span[class*="profile"], div[class*="profile"]');
+            const maxChecks = Math.min(wildcardElems.length, 10); 
+            for (let i = 0; i < maxChecks; i++) {
+                 const elem = wildcardElems[i];
+                 if(elem && elem.textContent) {
+                    const txt = elem.textContent.trim();
+                    if (txt.length > 2 && txt.length < 30 && txt.toLowerCase().indexOf('profile') === -1 && txt.toLowerCase().indexOf('setting') === -1) {
+                        return txt;
+                    }
+                 }
+            }
+
+            return '';
+        } catch(e) {
+            console.error("Zoho replies error reading author", e);
+            return '';
         }
-        return '';
     }
 
     function loadQuickReplies(searchTerm = '', categoryFilter = '') {
@@ -463,6 +541,213 @@
             // Just insert without changing container layout
             injectionTarget.insertBefore(waBtn, injectionTarget.firstChild);
         }
+    }
+
+    // --- Nova Funcionalidade: Botão de Copiar Texto ---
+
+    function checkForInputs() {
+        // Selecionar os componentes que guardam valor. Retornando SOMENTE as caixas de valor finais (para não sujar menus e Labels esquerdas)
+        const textComponents = document.querySelectorAll(`
+            .dv_info_value_field:not([data-copy-added])
+        `);
+        
+        textComponents.forEach(comp => {
+            // Ignorar celulas de lista que contem checkbox, tags, ou ícones de ação (para não quebrar a table)
+            if(comp.querySelector('crmutil-icon') || 
+               comp.classList.contains('lvCheckboxCol') || 
+               comp.classList.contains('lvEditIconCol') ||
+               comp.classList.contains('lv_activityLink') ||
+               comp.classList.contains('lv_noCustomBtn') ||
+               comp.classList.contains('lv_fixedLastCol')
+            ) {
+                comp.dataset.copyAdded = 'true';
+                return;
+            }
+
+            let valueToCopy = '';
+            
+            // 1. Tentar pegar valor de inputs e textareas se estiverem editáveis
+            const input = comp.querySelector('input[type="text"], input[type="number"], input[type="email"], textarea');
+            // 2. Alguns componentes crux expõem o valor via cx-prop-value
+            const cruxComp = comp.querySelector('[cx-prop-value]');
+            // 3. Container padrão do Zoho para dados de formulário em leitura
+            const crmDetailFields = comp.querySelector('crm-detailview-fields');
+            
+            if (input && input.value) {
+                valueToCopy = input.value;
+            } else if (cruxComp && cruxComp.getAttribute('cx-prop-value') && cruxComp.getAttribute('cx-prop-value').trim() !== '') {
+                valueToCopy = cruxComp.getAttribute('cx-prop-value');
+            } else if (crmDetailFields) {
+                // Verificar se o campo não está sinalizado como vazio (exemplo: ícone mínus ou span invisivel)
+                if (!crmDetailFields.querySelector('.dv_noDataSign') && !crmDetailFields.classList.contains('dv_noDataSign')) {
+                    // Extrair apenas os textos reais que foram printados dentro dele (evita tags e placeholders escondidos)
+                    const tempClone = crmDetailFields.cloneNode(true);
+                    // remover dummy
+                    tempClone.querySelectorAll('dummy-port-element').forEach(e => e.remove());
+                    valueToCopy = tempClone.textContent.trim();
+                }
+            } else {
+                valueToCopy = comp.textContent.trim();
+            }
+
+            if (valueToCopy && valueToCopy.length >= 5000) {
+                // Muito grande, ignorar para performance
+                comp.dataset.copyAdded = 'true';
+                return;
+            }
+
+            // Injetar SEMPRE para que quando a pessoa preencher algo sem atualizar a tela o botão funcione!
+            injectCopyButton(comp, valueToCopy);
+            comp.dataset.copyAdded = 'true';
+        });
+    }
+
+    function injectCopyButton(container, textToCopy) {
+        // Criar o Botão de Captura/Cópia
+        const copyBtn = document.createElement('a');
+        copyBtn.href = "#";
+        copyBtn.className = 'zoho-copy-btn';
+        copyBtn.title = 'Copiar conteúdo';
+        
+        // Ícone de prancheta minimalista
+        copyBtn.innerHTML = `<svg viewBox="0 0 24 24" width="16" height="16" fill="#666"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>`;
+
+        copyBtn.style.display = 'inline-flex';
+        copyBtn.style.alignItems = 'center';
+        copyBtn.style.justifyContent = 'center';
+        copyBtn.style.marginLeft = '8px';
+        copyBtn.style.cursor = 'pointer';
+        copyBtn.style.textDecoration = 'none';
+        copyBtn.style.verticalAlign = 'middle';
+        copyBtn.style.transition = 'all 0.2s ease';
+        copyBtn.style.padding = '2px';
+        copyBtn.style.borderRadius = '4px';
+
+        copyBtn.addEventListener('mouseenter', () => {
+            copyBtn.style.background = '#f0f0f0';
+            copyBtn.querySelector('svg').style.fill = '#333';
+        });
+        copyBtn.addEventListener('mouseleave', () => {
+            copyBtn.style.background = 'transparent';
+            copyBtn.querySelector('svg').style.fill = '#666';
+        });
+
+        // Função helper de sucesso
+        const showSuccess = () => {
+            const originalSvg = copyBtn.innerHTML;
+            copyBtn.innerHTML = `<svg viewBox="0 0 24 24" width="16" height="16" fill="#4CAF50"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>`;
+            showNotification('Copiado para a área de transferência!', 'success');
+            setTimeout(() => {
+                copyBtn.innerHTML = originalSvg;
+            }, 1500);
+        };
+
+        // Evento principal para copiar
+        copyBtn.addEventListener('click', (e) => {
+            // Removendo event preventDefault e stopPropagation muito agressivos aqui, eles podem bloquear o Clipboard!
+            e.preventDefault();
+            
+            // ATUALIZAR O TEXTO NA HORA DO CLIQUE (Caso ele tenha adicionado um campo antes vazio)
+            let currentText = '';
+            const input = container.querySelector('input[type="text"], input[type="number"], input[type="email"], textarea');
+            const cruxComp = container.querySelector('[cx-prop-value]');
+            const crmDetailFields = container.querySelector('crm-detailview-fields');
+            
+            if (input && input.value) {
+                currentText = input.value;
+            } else if (cruxComp && cruxComp.getAttribute('cx-prop-value') && cruxComp.getAttribute('cx-prop-value').trim() !== '') {
+                currentText = cruxComp.getAttribute('cx-prop-value');
+            } else if (crmDetailFields) {
+                if (!crmDetailFields.querySelector('.dv_noDataSign') && !crmDetailFields.classList.contains('dv_noDataSign')) {
+                    const tempClone = crmDetailFields.cloneNode(true);
+                    tempClone.querySelectorAll('dummy-port-element').forEach(e => e.remove());
+                    currentText = tempClone.textContent.trim();
+                }
+            } else {
+                currentText = container.textContent.trim();
+            }
+            
+            // Impedir clique se não tiver nada
+            if (!currentText || currentText === '--' || currentText === 'null') {
+                showNotification('Campo vazio, nada para copiar', 'error');
+                return;
+            }
+
+            navigator.clipboard.writeText(currentText).then(() => {
+                showSuccess();
+            }).catch(err => {
+                console.error('Falha ao usar writeText, caindo para fallback:', err);
+                fallbackCopy(currentText);
+            });
+        });
+
+        const fallbackCopy = (text) => {
+            const textArea = document.createElement("textarea");
+            textArea.value = text;
+            textArea.style.position = "fixed";
+            textArea.style.top = "-9999px";
+            textArea.style.left = "-9999px";
+            document.body.appendChild(textArea);
+            
+            // Foco e Selection ajudam em navegadores mais criteriosos
+            textArea.focus();
+            textArea.select();
+            
+            try {
+                // Comando síncrono que sempre roda dentro de click em extensões
+                const successful = document.execCommand('copy');
+                if (successful) showSuccess();
+                else showNotification('Falha ao copiar (fallback falhou)', 'error');
+            } catch (err) {
+                console.error("Exec command copy error", err);
+                showNotification('Erro ao copiar', 'error');
+            }
+            document.body.removeChild(textArea);
+        };
+
+        // Impede a janela de edição inline de abrir no click
+        const preventEdit = (e) => {
+            e.stopPropagation(); // Apenas paramos a propagação na bolha nativa, para que n suba pro <tr> do zoho
+        };
+
+        const interceptEvents = ['mousedown', 'mouseup', 'click'];
+        interceptEvents.forEach(evt => {
+            copyBtn.addEventListener(evt, preventEdit, false);
+        });
+
+        // Modificação de Posicionamento - Nova Lógica Simplificada
+        // Ao invés de lutar com z-indexes absolutos (info icons) das labels...
+        // Vamos forçar visualmente O BOTÃO ANTES DO VALOR, LITERALMENTE.
+        // O `container` atual é a caixa que abraça o valor, por exemplo: `<div id="ajaxEdit_..." class="dv_info_value_field dF aiCenter">`
+        
+        copyBtn.style.flexShrink = '0';
+        copyBtn.style.margin = '2px 8px 0 0'; // Espaço até a caixa do valor e centralização
+        
+        // Em um "display: flex" padrão do Zoho (dvValueContainer), insertBefore no container garante esquerda limpa.
+        setTimeout(() => {
+            if (container && container.parentNode) {
+                const parent = container.parentNode;
+                
+                // Forçar alinhamento horizontal no PAI absoluto para evitar que o botão caia para cima/baixo do texto
+                parent.style.display = 'flex';
+                parent.style.flexDirection = 'row';
+                parent.style.alignItems = 'center';
+
+                // Exatamente o elemento do meio que fica entre o lado esquerdo (Label) e o direito (Caixa editávelinteira)
+                if (parent.classList.contains('dvValueContainer') || 
+                    parent.classList.contains('dv_info_value') || 
+                    parent.classList.contains('lv_data_textfield') ||
+                    parent.classList.contains('lv_data_phone') ||
+                    parent.classList.contains('lv_data_email')) {
+                    // Coloca O botão FORA e ANTES da caixa de valor, assim se ela de vazia for editada, não atropela!
+                    parent.insertBefore(copyBtn, container);
+                } else {
+                    // Fallback extremo
+                    copyBtn.style.margin = '0 6px 0 0';
+                    container.insertBefore(copyBtn, container.firstChild);
+                }
+            }
+        }, 150);
     }
 
     // Escutar pedidos do Popup (Ex: requisição do nome do usuario logado no Zoho)

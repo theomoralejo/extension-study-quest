@@ -7,13 +7,21 @@ document.addEventListener('DOMContentLoaded', function () {
 
     document.getElementById('replyForm').addEventListener('submit', handleSubmit);
 
-    // Auto Extrair o autor do Zoho para a variavel (escondido do usuario)
+    // Tentar carregar do cache antes de perguntar pra tab
+    chrome.storage.local.get(['zohoAuthor'], function(result) {
+        if (result.zohoAuthor) {
+            currentAuthor = result.zohoAuthor;
+        }
+    });
+
+    // Auto Extrair o autor do Zoho para a variavel caso esteja na aba ativa agora
     chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
         if (tabs[0] && tabs[0].url && tabs[0].url.includes('zoho')) {
             chrome.tabs.sendMessage(tabs[0].id, { action: 'getAuthor' }, function (response) {
                 if (chrome.runtime.lastError) return; // ignore se não estiver no zoho
                 if (response && response.author) {
                     currentAuthor = response.author;
+                    chrome.storage.local.set({ zohoAuthor: currentAuthor });
                 }
             });
         }

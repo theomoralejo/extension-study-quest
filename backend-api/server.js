@@ -26,7 +26,7 @@ app.use('/api/replies', (req, res, next) => {
 app.get('/api/replies', async (req, res) => {
   try {
     const connection = await mysql.createConnection(dbConfig);
-    const [rows] = await connection.execute('SELECT * FROM quick_replies ORDER BY createdAt DESC');
+    const [rows] = await connection.execute('SELECT * FROM quick_replies WHERE is_deleted = FALSE ORDER BY createdAt DESC');
     connection.end();
     res.json(rows);
   } catch (error) {
@@ -73,7 +73,7 @@ app.delete('/api/replies/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const connection = await mysql.createConnection(dbConfig);
-    await connection.execute('DELETE FROM quick_replies WHERE id = ?', [id]);
+    await connection.execute('UPDATE quick_replies SET is_deleted = TRUE WHERE id = ?', [id]);
     connection.end();
     res.status(204).send();
   } catch (error) {
@@ -87,7 +87,7 @@ app.delete('/api/categories/:name', async (req, res) => {
   try {
     const { name } = req.params;
     const connection = await mysql.createConnection(dbConfig);
-    await connection.execute('DELETE FROM quick_replies WHERE category = ?', [name]);
+    await connection.execute('UPDATE quick_replies SET is_deleted = TRUE WHERE category = ?', [name]);
     connection.end();
     res.status(204).send();
   } catch (error) {
