@@ -1,1 +1,13 @@
 .DS_Store
+node_modules/
+
+# Segredos: nunca versionar
+.env
+.env.*
+!.env.example
+
+# Artefatos de build/empacotamento
+dist/
+*.zip
+*.xpi
+safari/

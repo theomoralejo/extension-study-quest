@@ -1,315 +1,410 @@
 // Popup.js - Gerenciamento de Quick Replies
-let editingId = null;
-let currentAuthor = '';
+(function () {
+    'use strict';
 
-document.addEventListener('DOMContentLoaded', function () {
-    loadReplies();
+    var SQ = globalThis.SQBrowser;
+    var CFG = globalThis.SQConfig;
 
-    document.getElementById('replyForm').addEventListener('submit', handleSubmit);
+    var editingId = null;
+    var currentAuthor = '';
+    var submitting = false;
 
-    // Tentar carregar do cache antes de perguntar pra tab
-    chrome.storage.local.get(['zohoAuthor'], function(result) {
-        if (result.zohoAuthor) {
-            currentAuthor = result.zohoAuthor;
-        }
-    });
+    document.addEventListener('DOMContentLoaded', function () {
+        loadReplies();
 
-    // Auto Extrair o autor do Zoho para a variavel caso esteja na aba ativa agora
-    chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
-        if (tabs[0] && tabs[0].url && tabs[0].url.includes('zoho')) {
-            chrome.tabs.sendMessage(tabs[0].id, { action: 'getAuthor' }, function (response) {
-                if (chrome.runtime.lastError) return; // ignore se não estiver no zoho
+        document.getElementById('replyForm').addEventListener('submit', handleSubmit);
+
+        // Cache primeiro: o nome aparece mesmo se a aba ativa nao for o Zoho.
+        SQ.storageGet(['zohoAuthor']).then(function (result) {
+            if (result && result.zohoAuthor) {
+                currentAuthor = result.zohoAuthor;
+            }
+        });
+
+        // Se a aba ativa for o Zoho, pergunta ao content script o nome atual.
+        SQ.activeTab().then(function (tab) {
+            if (!tab || !tab.url || tab.url.indexOf('zoho') === -1) return;
+            return SQ.sendMessageToTab(tab.id, { action: 'getAuthor' }).then(function (response) {
                 if (response && response.author) {
                     currentAuthor = response.author;
-                    chrome.storage.local.set({ zohoAuthor: currentAuthor });
+                    SQ.storageSet({ zohoAuthor: currentAuthor });
                 }
             });
+        });
+
+        // Alternar entre escolher categoria existente e criar uma nova
+        var btnNew = document.getElementById('btnNewCategory');
+        var btnCancel = document.getElementById('btnCancelCategory');
+        var wrapSelect = document.getElementById('categorySelectWrap');
+        var wrapInput = document.getElementById('categoryInputWrap');
+        var catSelect = document.getElementById('replyCategory');
+        var catInput = document.getElementById('newCategoryInput');
+
+        btnNew.addEventListener('click', function () {
+            wrapSelect.classList.add('is-hidden');
+            wrapInput.classList.remove('is-hidden');
+            catInput.focus();
+        });
+
+        btnCancel.addEventListener('click', function () {
+            wrapInput.classList.add('is-hidden');
+            wrapSelect.classList.remove('is-hidden');
+            catInput.value = '';
+        });
+
+        // Botao de excluir categoria so aparece com uma categoria selecionada
+        catSelect.addEventListener('change', function (e) {
+            var btnDel = document.getElementById('btnDeleteCategory');
+            if (e.target.value) {
+                btnDel.classList.remove('is-hidden');
+                btnDel.onclick = function () { deleteCategory(e.target.value); };
+            } else {
+                btnDel.classList.add('is-hidden');
+                btnDel.onclick = null;
+            }
+        });
+    });
+
+    /** true quando o usuario esta digitando uma categoria nova. */
+    function isCreatingCategory() {
+        return !document.getElementById('categoryInputWrap').classList.contains('is-hidden');
+    }
+
+    function handleSubmit(e) {
+        e.preventDefault();
+
+        // Guarda sincrona: sem ela, o segundo clique antes da resposta chegar
+        // dispara um POST duplicado e cria a resposta duas vezes.
+        if (submitting) return;
+
+        var title = document.getElementById('replyTitle').value.trim();
+        var text = document.getElementById('replyText').value.trim();
+
+        var category = isCreatingCategory()
+            ? document.getElementById('newCategoryInput').value.trim()
+            : document.getElementById('replyCategory').value;
+
+        if (!category) category = 'Geral';
+
+        if (!title || !text) {
+            showAlert('Preencha o título e o texto da resposta antes de salvar.', 'error');
+            return;
         }
-    });
 
-    // Togglers para Categoria
-    const btnNew = document.getElementById('btnNewCategory');
-    const btnCancel = document.getElementById('btnCancelCategory');
-    const wrapSelect = document.getElementById('categorySelectWrap');
-    const wrapInput = document.getElementById('categoryInputWrap');
-    const catSelect = document.getElementById('replyCategory');
-    const catInput = document.getElementById('newCategoryInput');
+        var author = currentAuthor || 'Sistema';
 
-    btnNew.addEventListener('click', () => {
-        wrapSelect.style.display = 'none';
-        wrapInput.style.display = 'flex';
-        catInput.focus();
-        catSelect.removeAttribute('required');
-        catInput.setAttribute('required', 'true');
-    });
+        var replyData = {
+            id: editingId !== null ? editingId : Date.now().toString(),
+            title: title,
+            text: text,
+            category: category,
+            author: author
+        };
 
-    btnCancel.addEventListener('click', () => {
-        wrapInput.style.display = 'none';
-        wrapSelect.style.display = 'flex';
-        catInput.value = '';
-        catInput.removeAttribute('required');
-        catSelect.setAttribute('required', 'true');
-    });
-});
+        var isEditing = editingId !== null;
+        var url = isEditing ? CFG.url('/replies/' + editingId) : CFG.url('/replies');
+        var method = isEditing ? 'PUT' : 'POST';
 
-function handleSubmit(e) {
-    e.preventDefault();
+        setSubmitting(true, isEditing);
 
-    const title = document.getElementById('replyTitle').value.trim();
-    const text = document.getElementById('replyText').value.trim();
-
-    // Obter categoria
-    const wrapInput = document.getElementById('categoryInputWrap');
-    let category = '';
-    if (wrapInput.style.display === 'flex') {
-        category = document.getElementById('newCategoryInput').value.trim();
-    } else {
-        category = document.getElementById('replyCategory').value;
+        fetch(url, {
+            method: method,
+            headers: CFG.headers(true),
+            body: JSON.stringify(replyData)
+        })
+            .then(readJsonOrThrow)
+            .then(function () {
+                showAlert(isEditing ? 'Resposta atualizada com sucesso!' : 'Resposta adicionada com sucesso!', 'success');
+                resetForm();
+                loadReplies();
+            })
+            .catch(function (err) {
+                console.error('Study Quest Replies: falha ao salvar', err);
+                showAlert(describeError(err, 'salvar a resposta'), 'error');
+            })
+            .then(function () {
+                setSubmitting(false, false);
+            });
     }
 
-    if (!category) category = 'Geral'; // Fallback
-
-    // O Autor é apenas o valor em memória, ou um padrão se não pegou nada
-    const author = currentAuthor || 'Sistema';
-
-    if (!title || !text) {
-        showAlert('Por favor, preencha todos os campos obrigatórios', 'error');
-        return;
+    function setSubmitting(active, isEditing) {
+        submitting = active;
+        var btn = document.getElementById('submitBtn');
+        btn.disabled = active;
+        if (active) {
+            btn.textContent = isEditing ? 'Atualizando...' : 'Salvando...';
+        } else {
+            btn.textContent = editingId !== null ? 'Atualizar Resposta' : 'Adicionar Resposta Rápida';
+        }
     }
 
-    // Save directly to API
-    const replyData = {
-        id: editingId !== null ? editingId : Date.now().toString(),
-        title: title,
-        text: text,
-        category: category,
-        author: author
-    };
+    function resetForm() {
+        editingId = null;
+        document.getElementById('replyForm').reset();
+        document.getElementById('categoryInputWrap').classList.add('is-hidden');
+        document.getElementById('categorySelectWrap').classList.remove('is-hidden');
+        document.getElementById('btnDeleteCategory').classList.add('is-hidden');
+        document.getElementById('submitBtn').textContent = 'Adicionar Resposta Rápida';
+    }
 
-    const url = editingId !== null
-        ? 'https://cv.studyquestuk.com/api/replies/' + editingId
-        : 'https://cv.studyquestuk.com/api/replies';
-
-    const method = editingId !== null ? 'PUT' : 'POST';
-
-    fetch(url, {
-        method: method,
-        headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': 'sq-54321-secret-key'
-        },
-        body: JSON.stringify(replyData)
-    })
-        .then(res => res.json())
-        .then(data => {
-            if (data.error) throw new Error(data.error);
-            showAlert(editingId ? 'Resposta atualizada com sucesso!' : 'Resposta adicionada com sucesso!', 'success');
-            editingId = null;
-            document.getElementById('submitBtn').textContent = 'Adicionar Resposta Rápida';
-            document.getElementById('replyForm').reset();
-            loadReplies();
-        })
-        .catch(err => {
-            console.error(err);
-            showAlert('Erro ao salvar no banco de dados', 'error');
-        });
-}
-
-function loadReplies() {
-    fetch('https://cv.studyquestuk.com/api/replies', {
-        headers: { 'x-api-key': 'sq-54321-secret-key' }
-    })
-        .then(res => res.json())
-        .then(replies => {
-            // Preencher select de categorias
-            const allCategories = [...new Set(replies.map(r => r.category).filter(Boolean))].sort();
-            const catSelect = document.getElementById('replyCategory');
-
-            // Limpa as opções anteriores (mantendo o placeholder)
-            catSelect.innerHTML = '<option value="" disabled selected>Selecione uma categoria...</option>';
-
-            allCategories.forEach(cat => {
-                const opt = document.createElement('option');
-                opt.value = cat;
-                opt.textContent = cat;
-                catSelect.appendChild(opt);
-            });
-
-            // Preencher select de filtro (se houver no popup.html)
-            const filterSelect = document.getElementById('categoryFilter');
-            if (filterSelect) {
-                filterSelect.innerHTML = '<option value="">Todas Categorias</option>';
-                allCategories.forEach(cat => {
-                    const opt = document.createElement('option');
-                    opt.value = cat;
-                    opt.textContent = cat;
-                    filterSelect.appendChild(opt);
-                });
+    /** Levanta erro com o motivo real do backend em vez de engolir num generico. */
+    function readJsonOrThrow(res) {
+        return res.text().then(function (body) {
+            var data = null;
+            try {
+                data = body ? JSON.parse(body) : null;
+            } catch (e) {
+                data = null;
             }
 
-            const listContainer = document.getElementById('repliesList');
-
-            if (!replies || replies.length === 0) {
-                listContainer.innerHTML = `
-                    <div class="empty-state">
-                        Nenhuma resposta rápida cadastrada.<br>
-                        Adicione sua primeira resposta acima!
-                    </div>
-                `;
-                return;
+            if (!res.ok) {
+                var reason = (data && (data.error || data.message)) || body || ('HTTP ' + res.status);
+                var err = new Error(reason);
+                err.status = res.status;
+                throw err;
             }
 
-            listContainer.innerHTML = replies.map(reply => `
-                <div class="reply-item" data-id="${reply.id}">
-                    <div class="reply-title">
-                       ${escapeHtml(reply.title)} 
-                       <span style="font-size: 11px; background: #eee; padding: 2px 6px; border-radius: 4px; color: #555; font-weight: normal; margin-left: 6px;">${escapeHtml(reply.category || 'Geral')}</span>
-                    </div>
-                    <div class="reply-text">${escapeHtml(reply.text)}</div>
-                    <div style="font-size: 11px; color: #888; margin-bottom: 8px;">Por: ${escapeHtml(reply.author || 'User')}</div>
-                    <div class="reply-actions">
-                        <button class="btn-small btn-edit" data-id="${reply.id}">✏️ Editar</button>
-                        <button class="btn-small btn-delete" data-id="${reply.id}">🗑️ Excluir</button>
-                    </div>
-                </div>
-            `).join('');
-
-            listContainer.querySelectorAll('.btn-edit').forEach(btn => {
-                btn.addEventListener('click', () => editReply(btn.dataset.id));
-            });
-            listContainer.querySelectorAll('.btn-delete').forEach(btn => {
-                btn.addEventListener('click', () => deleteReply(btn.dataset.id));
-            });
-        })
-        .catch(err => {
-            console.error('Erro ao carregar respostas:', err);
-            document.getElementById('repliesList').innerHTML = '<div class="empty-state">Erro ao conectar ao banco de dados.</div>';
+            if (data && data.error) throw new Error(data.error);
+            return data;
         });
-}
+    }
 
-function editReply(id) {
-    fetch('https://cv.studyquestuk.com/api/replies', {
-        headers: { 'x-api-key': 'sq-54321-secret-key' }
-    })
-        .then(res => res.json())
-        .then(replies => {
-            const reply = replies.find(r => r.id === id);
+    /** Monta mensagem com o que falhou, por que, e o que fazer. */
+    function describeError(err, acao) {
+        var status = err && err.status;
+        var detail = (err && err.message) || 'motivo desconhecido';
 
-            if (reply) {
-                document.getElementById('replyTitle').value = reply.title;
-                document.getElementById('replyText').value = reply.text;
+        if (status === 401 || status === 403) {
+            return 'Sem autorização para ' + acao + ': a chave da API foi recusada pelo servidor. Avise o suporte.';
+        }
+        if (status === 404) {
+            return 'Não foi possível ' + acao + ': o registro não existe mais no servidor. Recarregue a lista.';
+        }
+        if (status >= 500) {
+            return 'O servidor falhou ao ' + acao + ' (' + detail + '). Tente de novo em alguns minutos.';
+        }
+        if (!status) {
+            return 'Não foi possível ' + acao + ': sem conexão com o servidor (' + detail +
+                '). Verifique a internet e se a extensão tem permissão para cv.studyquestuk.com.';
+        }
+        return 'Não foi possível ' + acao + ': ' + detail;
+    }
 
-                // Setar categoria no select
-                const catSelect = document.getElementById('replyCategory');
-                const catInput = document.getElementById('newCategoryInput');
-                const wrapSelect = document.getElementById('categorySelectWrap');
-                const wrapInput = document.getElementById('categoryInputWrap');
+    function loadReplies() {
+        fetch(CFG.url('/replies'), { headers: CFG.headers(false) })
+            .then(readJsonOrThrow)
+            .then(function (replies) {
+                replies = replies || [];
 
-                // Verificar se a categoria da resposta existe nas options
-                let optionExists = false;
-                for (let i = 0; i < catSelect.options.length; i++) {
-                    if (catSelect.options[i].value === reply.category) {
-                        optionExists = true;
-                        catSelect.selectedIndex = i;
-                        break;
+                var allCategories = [];
+                replies.forEach(function (r) {
+                    if (r.category && allCategories.indexOf(r.category) === -1) {
+                        allCategories.push(r.category);
                     }
+                });
+                allCategories.sort();
+
+                var catSelect = document.getElementById('replyCategory');
+                var selected = catSelect.value;
+                catSelect.textContent = '';
+                catSelect.appendChild(makeOption('', 'Selecione uma categoria...', true));
+                allCategories.forEach(function (cat) {
+                    catSelect.appendChild(makeOption(cat, cat, false));
+                });
+                // Preserva a categoria escolhida quando ela ainda existe.
+                if (selected && allCategories.indexOf(selected) !== -1) {
+                    catSelect.value = selected;
                 }
 
-                if (!optionExists && reply.category) {
-                    // Categoria solta, mostramos no input
-                    wrapSelect.style.display = 'none';
-                    wrapInput.style.display = 'flex';
-                    catInput.value = reply.category;
-                    catSelect.removeAttribute('required');
-                    catInput.setAttribute('required', 'true');
-                } else {
-                    wrapInput.style.display = 'none';
-                    wrapSelect.style.display = 'flex';
-                    catInput.value = '';
-                    catInput.removeAttribute('required');
-                    catSelect.setAttribute('required', 'true');
-                }
+                renderReplies(replies);
+            })
+            .catch(function (err) {
+                console.error('Study Quest Replies: erro ao carregar respostas', err);
+                showEmptyState(describeError(err, 'carregar as respostas'));
+            });
+    }
 
-                document.getElementById('submitBtn').textContent = 'Atualizar Resposta';
-                editingId = id;
+    function makeOption(value, label, isPlaceholder) {
+        var opt = document.createElement('option');
+        opt.value = value;
+        opt.textContent = label;
+        if (isPlaceholder) {
+            opt.disabled = true;
+            opt.selected = true;
+        }
+        return opt;
+    }
 
-                // Scroll para o formulário
-                window.scrollTo({ top: 0, behavior: 'smooth' });
+    function showEmptyState(message) {
+        var listContainer = document.getElementById('repliesList');
+        listContainer.textContent = '';
+        var div = document.createElement('div');
+        div.className = 'empty-state';
+        div.textContent = message;
+        listContainer.appendChild(div);
+    }
+
+    function renderReplies(replies) {
+        var listContainer = document.getElementById('repliesList');
+
+        if (!replies.length) {
+            showEmptyState('Nenhuma resposta rápida cadastrada. Adicione sua primeira resposta acima!');
+            return;
+        }
+
+        listContainer.textContent = '';
+
+        replies.forEach(function (reply) {
+            var item = document.createElement('div');
+            item.className = 'reply-item';
+
+            var title = document.createElement('div');
+            title.className = 'reply-title';
+            title.appendChild(document.createTextNode(reply.title || ''));
+
+            var badge = document.createElement('span');
+            badge.className = 'reply-badge';
+            badge.textContent = reply.category || 'Geral';
+            title.appendChild(badge);
+
+            var text = document.createElement('div');
+            text.className = 'reply-text';
+            text.textContent = reply.text || '';
+
+            var author = document.createElement('div');
+            author.className = 'reply-author';
+            author.textContent = 'Por: ' + (reply.author || 'User');
+
+            var actions = document.createElement('div');
+            actions.className = 'reply-actions';
+
+            var btnEdit = document.createElement('button');
+            btnEdit.type = 'button';
+            btnEdit.className = 'btn-small btn-edit';
+            btnEdit.textContent = 'Editar';
+            btnEdit.addEventListener('click', function () { editReply(reply); });
+
+            var btnDelete = document.createElement('button');
+            btnDelete.type = 'button';
+            btnDelete.className = 'btn-small btn-delete';
+            btnDelete.textContent = 'Excluir';
+            btnDelete.addEventListener('click', function () { deleteReply(reply.id); });
+
+            actions.appendChild(btnEdit);
+            actions.appendChild(btnDelete);
+
+            item.appendChild(title);
+            item.appendChild(text);
+            item.appendChild(author);
+            item.appendChild(actions);
+
+            listContainer.appendChild(item);
+        });
+    }
+
+    /**
+     * Preenche o formulario com a resposta escolhida.
+     * Recebe o objeto ja carregado — antes isso refazia um GET na lista inteira
+     * so para reencontrar o mesmo registro que ja estava em memoria.
+     */
+    function editReply(reply) {
+        document.getElementById('replyTitle').value = reply.title || '';
+        document.getElementById('replyText').value = reply.text || '';
+
+        var catSelect = document.getElementById('replyCategory');
+        var catInput = document.getElementById('newCategoryInput');
+        var wrapSelect = document.getElementById('categorySelectWrap');
+        var wrapInput = document.getElementById('categoryInputWrap');
+
+        var optionExists = false;
+        for (var i = 0; i < catSelect.options.length; i++) {
+            if (catSelect.options[i].value === reply.category) {
+                optionExists = true;
+                catSelect.selectedIndex = i;
+                break;
             }
-        });
-}
+        }
 
-// Excluir Resposta
-function deleteReply(id) {
-    if (!confirm('Tem certeza que deseja excluir esta resposta rápida?')) {
-        return;
+        if (!optionExists && reply.category) {
+            // Categoria que nao esta na lista: mostra no campo de texto.
+            wrapSelect.classList.add('is-hidden');
+            wrapInput.classList.remove('is-hidden');
+            catInput.value = reply.category;
+        } else {
+            wrapInput.classList.add('is-hidden');
+            wrapSelect.classList.remove('is-hidden');
+            catInput.value = '';
+        }
+
+        editingId = reply.id;
+        document.getElementById('submitBtn').textContent = 'Atualizar Resposta';
+
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        document.getElementById('replyTitle').focus();
     }
 
-    fetch('https://cv.studyquestuk.com/api/replies/' + id, {
-        method: 'DELETE',
-        headers: { 'x-api-key': 'sq-54321-secret-key' }
-    })
-        .then(res => {
-            if (!res.ok) throw new Error('Erro na resposta do servidor');
-            showAlert('Resposta excluída com sucesso!', 'success');
-            loadReplies();
+    function deleteReply(id) {
+        if (!confirm('Tem certeza que deseja excluir esta resposta rápida?')) {
+            return;
+        }
+
+        fetch(CFG.url('/replies/' + id), {
+            method: 'DELETE',
+            headers: CFG.headers(false)
         })
-        .catch(err => {
-            console.error(err);
-            showAlert('Erro ao excluir no banco de dados', 'error');
-        });
-}
-
-// Exibir botão de apagar categoria quando se seleciona uma categoria, ou esconder.
-document.getElementById('replyCategory').addEventListener('change', function (e) {
-    const btnDel = document.getElementById('btnDeleteCategory');
-    if (e.target.value) {
-        btnDel.style.display = 'inline-block';
-        btnDel.onclick = () => deleteCategory(e.target.value);
-    } else {
-        btnDel.style.display = 'none';
-        btnDel.onclick = null;
-    }
-});
-
-// Excluir Categoria Inteira
-function deleteCategory(name) {
-    if (!confirm('ATENÇÃO: Você está prestes a excluir a categoria "' + name + '" e TODAS as respostas nela contidas. Tem certeza?')) {
-        return;
+            .then(function (res) {
+                if (!res.ok) {
+                    var err = new Error('HTTP ' + res.status);
+                    err.status = res.status;
+                    throw err;
+                }
+                showAlert('Resposta excluída com sucesso!', 'success');
+                if (editingId === id) resetForm();
+                loadReplies();
+            })
+            .catch(function (err) {
+                console.error('Study Quest Replies: falha ao excluir', err);
+                showAlert(describeError(err, 'excluir a resposta'), 'error');
+            });
     }
 
-    fetch('https://cv.studyquestuk.com/api/categories/' + encodeURIComponent(name), {
-        method: 'DELETE',
-        headers: { 'x-api-key': 'sq-54321-secret-key' }
-    })
-        .then(res => {
-            if (!res.ok) throw new Error('Erro na resposta do servidor');
-            showAlert('Categoria excluída com sucesso!', 'success');
-            // Reset fields
-            document.getElementById('replyCategory').value = '';
-            document.getElementById('btnDeleteCategory').style.display = 'none';
-            loadReplies();
+    function deleteCategory(name) {
+        if (!confirm('ATENÇÃO: Você está prestes a excluir a categoria "' + name + '" e TODAS as respostas nela contidas. Tem certeza?')) {
+            return;
+        }
+
+        fetch(CFG.url('/categories/' + encodeURIComponent(name)), {
+            method: 'DELETE',
+            headers: CFG.headers(false)
         })
-        .catch(err => {
-            console.error(err);
-            showAlert('Erro ao excluir categoria no banco de dados', 'error');
-        });
-}
+            .then(function (res) {
+                if (!res.ok) {
+                    var err = new Error('HTTP ' + res.status);
+                    err.status = res.status;
+                    throw err;
+                }
+                showAlert('Categoria excluída com sucesso!', 'success');
+                resetForm();
+                loadReplies();
+            })
+            .catch(function (err) {
+                console.error('Study Quest Replies: falha ao excluir categoria', err);
+                showAlert(describeError(err, 'excluir a categoria'), 'error');
+            });
+    }
 
-function showAlert(message, type) {
-    const alertDiv = document.getElementById('alert');
-    alertDiv.className = `alert alert-${type}`;
-    alertDiv.textContent = message;
-    alertDiv.classList.remove('hidden');
+    var alertTimer = null;
 
-    setTimeout(() => {
-        alertDiv.classList.add('hidden');
-    }, 3000);
-}
+    function showAlert(message, type) {
+        var alertDiv = document.getElementById('alert');
+        alertDiv.className = 'alert alert-' + type;
+        alertDiv.textContent = message;
+        alertDiv.classList.remove('hidden');
 
-function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
-
+        if (alertTimer) clearTimeout(alertTimer);
+        // Erro fica mais tempo na tela: costuma ter texto para ler.
+        alertTimer = setTimeout(function () {
+            alertDiv.classList.add('hidden');
+        }, type === 'error' ? 8000 : 3000);
+    }
+})();

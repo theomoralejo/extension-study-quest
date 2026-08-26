@@ -30,11 +30,19 @@
     display: inline-block;
 }
 
-/* Painel de Quick Replies */
+/*
+ * Painel de Quick Replies.
+ *
+ * A largura e a altura cedem a viewport em vez de serem fixas: numa janela
+ * estreita ou com o CRM em tela dividida, os 400px/480px antigos estouravam e
+ * parte do painel ficava fora da tela, inalcancavel. O posicionamento em si
+ * (top/left, e o flip para cima quando nao cabe embaixo) e calculado em
+ * content.js, que tambem reposiciona no resize e no scroll.
+ */
 .quick-replies-panel {
     position: fixed;
-    width: 400px;
-    max-height: 480px;
+    width: min(400px, calc(100vw - 24px));
+    max-height: min(480px, calc(100vh - 24px));
     background: #f5f6fa;
     border-radius: 8px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, .08);
@@ -45,6 +53,13 @@
     animation: quickRepliesSlideIn 0.2s ease-out;
     border: 1px solid #ddd;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    box-sizing: border-box;
+}
+
+.quick-replies-panel *,
+.quick-replies-panel *::before,
+.quick-replies-panel *::after {
+    box-sizing: border-box;
 }
 
 @keyframes quickRepliesSlideIn {
@@ -63,16 +78,29 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 16px 20px;
+    gap: 8px;
+    padding: 14px 16px;
     background: linear-gradient(135deg, var(--sq-primary) 0%, var(--sq-primary-dark) 100%);
     color: white;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
     z-index: 2;
+    flex: 0 0 auto;
 }
 
 .quick-replies-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
     font-size: 15px;
     font-weight: 600;
+    min-width: 0;
+}
+
+.quick-replies-title img {
+    width: 16px;
+    height: 16px;
+    display: block;
+    flex-shrink: 0;
 }
 
 .quick-replies-close {
@@ -80,10 +108,12 @@
     border: none;
     color: white;
     font-size: 20px;
+    line-height: 1;
     cursor: pointer;
     padding: 0;
-    width: 24px;
-    height: 24px;
+    flex: 0 0 auto;
+    width: 28px;
+    height: 28px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -95,21 +125,44 @@
     background: rgba(255, 255, 255, 0.2);
 }
 
-/* Campo de busca */
+.quick-replies-close:focus-visible,
+.quick-replies-search-input:focus-visible,
+.quick-replies-category-filter:focus-visible {
+    outline: 2px solid #fff;
+    outline-offset: 1px;
+}
+
+/* Busca + filtro: passam a empilhar quando o painel fica estreito. */
 .quick-replies-search {
-    padding: 14px 20px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 12px 16px;
     background: white;
     border-bottom: 1px solid #e0e0e0;
+    flex: 0 0 auto;
 }
 
 .quick-replies-search-input {
-    width: 100%;
+    flex: 2 1 10rem;
+    min-width: 0;
     padding: 10px 12px;
     border: 1px solid #ddd;
     border-radius: 6px;
     font-size: 13px;
     font-family: inherit;
-    transition: all .2s ease;
+    transition: border-color .2s ease, box-shadow .2s ease;
+}
+
+.quick-replies-category-filter {
+    flex: 1 1 7rem;
+    min-width: 0;
+    padding: 10px 8px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    font-size: 12px;
+    font-family: inherit;
+    background: white;
 }
 
 .quick-replies-search-input:focus {
@@ -118,15 +171,23 @@
     box-shadow: 0 0 0 3px rgba(0, 103, 166, 0.15);
 }
 
-/* Lista de respostas */
+/*
+ * A lista e a unica parte que rola. `min-height: 0` e obrigatorio: sem ele um
+ * item flex nao encolhe abaixo do proprio conteudo e o overflow nunca ativa,
+ * empurrando o painel para fora da tela.
+ */
 .quick-replies-list {
-    flex: 1;
+    flex: 1 1 auto;
+    min-height: 0;
     overflow-y: auto;
-    padding: 16px 20px;
-    max-height: 340px;
+    -webkit-overflow-scrolling: touch;
+    padding: 16px;
     display: flex;
     flex-direction: column;
     gap: 12px;
+    /* Firefox nao suporta ::-webkit-scrollbar */
+    scrollbar-width: thin;
+    scrollbar-color: #c1c1c1 #f1f1f1;
 }
 
 .quick-replies-list::-webkit-scrollbar {
@@ -149,13 +210,13 @@
 /* Item de resposta */
 .quick-reply-item {
     padding: 14px;
-    margin-bottom: 0px;
     background: white;
     border-radius: 8px;
     cursor: pointer;
     border-left: 4px solid var(--sq-accent);
     box-shadow: 0 1px 4px rgba(0, 0, 0, .08);
     transition: transform .2s ease, box-shadow .2s ease;
+    flex: 0 0 auto;
 }
 
 .quick-reply-item:hover {
@@ -164,11 +225,30 @@
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
+.quick-reply-item:focus-visible {
+    outline: 2px solid var(--sq-primary);
+    outline-offset: 2px;
+}
+
 .quick-reply-title {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
     font-weight: 600;
     font-size: 14px;
     color: var(--sq-primary-dark);
     margin-bottom: 6px;
+    overflow-wrap: anywhere;
+}
+
+.quick-reply-badge {
+    font-size: 10px;
+    background: #eee;
+    padding: 2px 4px;
+    border-radius: 4px;
+    color: #555;
+    font-weight: normal;
 }
 
 .quick-reply-text {
@@ -177,11 +257,18 @@
     line-height: 1.5;
     overflow: hidden;
     text-overflow: ellipsis;
+    overflow-wrap: anywhere;
     display: -webkit-box;
     -webkit-line-clamp: 2;
     line-clamp: 2;
-    /* fix lint */
     -webkit-box-orient: vertical;
+}
+
+.quick-reply-author {
+    font-size: 10px;
+    color: #888;
+    margin-top: 4px;
+    overflow-wrap: anywhere;
 }
 
 /* Estados vazios e loading */
@@ -198,6 +285,7 @@
     position: fixed;
     top: 20px;
     right: 20px;
+    max-width: calc(100vw - 40px);
     padding: 12px 20px;
     background: white;
     border-radius: 6px;
@@ -207,7 +295,7 @@
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     opacity: 0;
     transform: translateY(-20px);
-    transition: all 0.3s ease;
+    transition: opacity 0.3s ease, transform 0.3s ease;
 }
 
 .quick-replies-notification.show {
@@ -223,4 +311,20 @@
 .quick-replies-notification.error {
     border-left: 4px solid #dc3545;
     color: #721c24;
+}
+
+/* Respeita quem pediu menos animacao no sistema (a11y). */
+@media (prefers-reduced-motion: reduce) {
+
+    .quick-replies-panel,
+    .quick-replies-notification,
+    .quick-reply-item,
+    .quick-replies-btn {
+        animation: none !important;
+        transition: none !important;
+    }
+
+    .quick-reply-item:hover {
+        transform: none;
+    }
 }

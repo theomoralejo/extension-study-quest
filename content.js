@@ -2,27 +2,56 @@
 (function () {
     'use strict';
 
-    let quickRepliesButton = null;
-    let quickRepliesPanel = null;
-    let currentEditor = null;
+    var SQ = globalThis.SQBrowser;
+    var CFG = globalThis.SQConfig;
 
-    // Inicializar quando a página carregar
+    var quickRepliesPanel = null;
+    var currentEditor = null;
+    var panelAnchorButton = null;
+    var observerTimeout = null;
+    var repositionScheduled = false;
+
+    // Espaco minimo entre o painel e a borda da janela.
+    var VIEWPORT_MARGIN = 12;
+
+    /**
+     * Cria um <svg> por DOM em vez de innerHTML.
+     * SVG vive no namespace XML proprio, entao `createElement` produziria um
+     * elemento HTML invalido que nao renderiza — daí o createElementNS.
+     */
+    function makeSvg(pathData, size, fill) {
+        var NS = 'http://www.w3.org/2000/svg';
+        var svg = document.createElementNS(NS, 'svg');
+        svg.setAttribute('viewBox', '0 0 24 24');
+        svg.setAttribute('width', String(size));
+        svg.setAttribute('height', String(size));
+        svg.setAttribute('fill', fill);
+        svg.setAttribute('aria-hidden', 'true');
+
+        var path = document.createElementNS(NS, 'path');
+        path.setAttribute('d', pathData);
+        svg.appendChild(path);
+        return svg;
+    }
+
+    var ICON_WHATSAPP = 'M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z';
+    var ICON_CLIPBOARD = 'M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z';
+    var ICON_CHECK = 'M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z';
+
     init();
 
-    let observerTimeout = null;
-
     function init() {
-        console.log('Zoho Quick Replies Extension: Iniciando...');
+        console.log('Study Quest Replies: iniciando...');
 
         // Observar mudanças no DOM usando uma versão debounced (evita travar o navegador)
-        const observer = new MutationObserver(function (mutations) {
+        var observer = new MutationObserver(function () {
             // Em vez de processar TUDO a cada mutação, espera o DOM acalmar 300ms
             if (observerTimeout) clearTimeout(observerTimeout);
-            
-            observerTimeout = setTimeout(() => {
+
+            observerTimeout = setTimeout(function () {
                 checkForNoteEditor();
-                checkForPhoneNumbers(); 
-                checkForInputs(); 
+                checkForPhoneNumbers();
+                checkForInputs();
             }, 300);
         });
 
@@ -32,70 +61,88 @@
         });
 
         // Verificar inicialmente
-        setTimeout(() => {
+        setTimeout(function () {
             checkForNoteEditor();
             checkForPhoneNumbers();
-            checkForInputs(); 
-            
+            checkForInputs();
+
             // Buscar na inicialização e setar a flag
             cacheZohoAuthorName();
         }, 2000);
 
         // Executar uma rotina bem mais leve a cada 30 segundos (isso evita freezing contínuo)
-        setInterval(() => {
-            cacheZohoAuthorName();
-        }, 30000);
+        setInterval(cacheZohoAuthorName, 30000);
+
+        // O painel e `position: fixed` ancorado no botao: se a janela muda de
+        // tamanho ou a pagina rola, a ancora se move e o painel precisa
+        // reacompanhar, senao ele "descola" e pode sair da tela.
+        window.addEventListener('resize', scheduleReposition, { passive: true });
+        window.addEventListener('scroll', scheduleReposition, { passive: true, capture: true });
     }
 
     function cacheZohoAuthorName() {
-        // Para n travar a UI, executa em uma micro-tarefa nativa do EventLoop
-        Promise.resolve().then(() => {
-            const author = getZohoAuthor();
-            if (author && chrome.storage && chrome.storage.local) {
-                chrome.storage.local.set({ zohoAuthor: author });
+        // Para nao travar a UI, executa em uma micro-tarefa nativa do EventLoop
+        Promise.resolve().then(function () {
+            var author = getZohoAuthor();
+            if (author && SQ) {
+                SQ.storageSet({ zohoAuthor: author });
             }
         });
     }
 
     function checkForNoteEditor() {
         // Procurar pelo editor de notas do Zoho
-        const noteEditors = document.querySelectorAll('crux-note-editor');
+        var noteEditors = document.querySelectorAll('crux-note-editor');
 
-        noteEditors.forEach(editor => {
+        noteEditors.forEach(function (editor) {
             // Verificar se já adicionamos o botão neste editor
             if (editor.dataset.quickRepliesAdded) {
                 return;
             }
 
             // Procurar pela área de ferramentas do editor
-            const footerLeft = editor.querySelector('.cxNotesFooterLeft');
+            var footerLeft = editor.querySelector('.cxNotesFooterLeft');
 
-            if (footerLeft && !editor.dataset.quickRepliesAdded) {
+            if (footerLeft) {
                 addQuickRepliesButton(footerLeft, editor);
                 editor.dataset.quickRepliesAdded = 'true';
-                console.log('Zoho Quick Replies: Botão adicionado ao editor');
+                console.log('Study Quest Replies: botão adicionado ao editor');
             }
         });
     }
 
     function addQuickRepliesButton(footerLeft, editor) {
         // Criar botão de Quick Replies
-        const button = document.createElement('span');
+        var button = document.createElement('span');
         button.className = 'quick-replies-btn cxNotesFooterIcoWrap';
-        const btnIconUrl = chrome.runtime.getURL('icons/icon16.png');
-        button.innerHTML = `
-            <img src="${btnIconUrl}" class="quick-replies-icon" style="width: 16px; height: 16px; display: block;" alt="SQ">
-        `;
+        button.setAttribute('role', 'button');
+        button.setAttribute('tabindex', '0');
+        button.setAttribute('aria-haspopup', 'dialog');
+        button.setAttribute('aria-expanded', 'false');
+
+        var img = document.createElement('img');
+        img.src = SQ.getURL('icons/icon16.png');
+        img.className = 'quick-replies-icon';
+        img.alt = 'Study Quest';
+        img.style.width = '16px';
+        img.style.height = '16px';
+        img.style.display = 'block';
+        button.appendChild(img);
+
         button.title = 'Quick Replies';
         button.style.cursor = 'pointer';
         button.style.marginRight = '8px';
 
-        // Adicionar evento de clique
-        button.addEventListener('click', function (e) {
+        function activate(e) {
             e.preventDefault();
             e.stopPropagation();
             currentEditor = editor;
             toggleQuickRepliesPanel(button);
+        }
+
+        button.addEventListener('click', activate);
+        button.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter' || e.key === ' ') activate(e);
         });
 
         // Inserir o botão no início do footerLeft
@@ -111,79 +158,180 @@
     }
 
     function openQuickRepliesPanel(button) {
-        // Criar painel
-        const panel = document.createElement('div');
+        var panel = document.createElement('div');
         panel.className = 'quick-replies-panel';
-        const iconUrl = chrome.runtime.getURL('icons/icon16.png');
-        panel.innerHTML = `
-            <div class="quick-replies-header">
-                <span class="quick-replies-title" style="display: flex; align-items: center; gap: 8px;">
-                    <img src="${iconUrl}" style="width: 16px; height: 16px; display: block;" alt="SQ"> 
-                    Study Quest Replies
-                </span>
-                <button class="quick-replies-close">✕</button>
-            </div>
-            <div class="quick-replies-search" style="display: flex; gap: 8px;">
-                <input type="text" placeholder="Buscar respostas..." class="quick-replies-search-input" style="flex: 2;">
-                <select id="quickRepliesCategoryFilter" style="flex: 1; padding: 6px; border: 1px solid #ddd; border-radius: 6px; font-size: 12px;">
-                    <option value="">Categorias</option>
-                </select>
-            </div>
-            <div class="quick-replies-list" id="quickRepliesList">
-                <div class="quick-replies-loading">Carregando...</div>
-            </div>
-        `;
+        panel.setAttribute('role', 'dialog');
+        panel.setAttribute('aria-label', 'Study Quest Replies');
 
-        // Posicionar o painel
-        const rect = button.getBoundingClientRect();
-        panel.style.position = 'fixed';
-        panel.style.top = (rect.bottom + 5) + 'px';
-        panel.style.left = rect.left + 'px';
+        // Cabecalho
+        var header = document.createElement('div');
+        header.className = 'quick-replies-header';
+
+        var titleSpan = document.createElement('span');
+        titleSpan.className = 'quick-replies-title';
+        var logo = document.createElement('img');
+        logo.src = SQ.getURL('icons/icon16.png');
+        logo.alt = '';
+        titleSpan.appendChild(logo);
+        titleSpan.appendChild(document.createTextNode('Study Quest Replies'));
+
+        var closeBtn = document.createElement('button');
+        closeBtn.type = 'button';
+        closeBtn.className = 'quick-replies-close';
+        closeBtn.setAttribute('aria-label', 'Fechar');
+        closeBtn.textContent = '✕';
+
+        header.appendChild(titleSpan);
+        header.appendChild(closeBtn);
+
+        // Busca + filtro
+        var searchWrap = document.createElement('div');
+        searchWrap.className = 'quick-replies-search';
+
+        var searchInput = document.createElement('input');
+        searchInput.type = 'text';
+        searchInput.id = 'quickRepliesSearch';
+        searchInput.name = 'quickRepliesSearch';
+        searchInput.autocomplete = 'off';
+        searchInput.placeholder = 'Buscar respostas...';
+        searchInput.className = 'quick-replies-search-input';
+        searchInput.setAttribute('aria-label', 'Buscar respostas');
+
+        var categoryFilter = document.createElement('select');
+        categoryFilter.id = 'quickRepliesCategoryFilter';
+        categoryFilter.name = 'quickRepliesCategoryFilter';
+        categoryFilter.className = 'quick-replies-category-filter';
+        categoryFilter.setAttribute('aria-label', 'Filtrar por categoria');
+        var allOpt = document.createElement('option');
+        allOpt.value = '';
+        allOpt.textContent = 'Categorias';
+        categoryFilter.appendChild(allOpt);
+
+        searchWrap.appendChild(searchInput);
+        searchWrap.appendChild(categoryFilter);
+
+        // Lista
+        var list = document.createElement('div');
+        list.className = 'quick-replies-list';
+        list.id = 'quickRepliesList';
+        var loading = document.createElement('div');
+        loading.className = 'quick-replies-loading';
+        loading.textContent = 'Carregando...';
+        list.appendChild(loading);
+
+        panel.appendChild(header);
+        panel.appendChild(searchWrap);
+        panel.appendChild(list);
 
         document.body.appendChild(panel);
         quickRepliesPanel = panel;
+        panelAnchorButton = button;
+        button.setAttribute('aria-expanded', 'true');
 
-        // Adicionar eventos
+        positionPanel();
+
         panel.querySelector('.quick-replies-close').addEventListener('click', closeQuickRepliesPanel);
         panel.querySelector('.quick-replies-search-input').addEventListener('input', handleSearch);
         panel.querySelector('#quickRepliesCategoryFilter').addEventListener('change', handleSearch);
 
-        // Carregar respostas
         loadQuickReplies();
 
         // Fechar ao clicar fora
-        setTimeout(() => {
+        setTimeout(function () {
             document.addEventListener('click', handleOutsideClick);
+            document.addEventListener('keydown', handleEscape);
         }, 100);
+    }
+
+    /**
+     * Ancora o painel no botao e o mantem dentro da viewport.
+     *
+     * Antes o painel era posicionado direto em (rect.left, rect.bottom): com o
+     * botao perto da borda direita ou inferior — comum com o CRM em tela
+     * dividida ou janela estreita — parte dele ficava fora da tela e sem como
+     * ser alcancada. Aqui a posicao e limitada as bordas e, quando nao ha
+     * espaco abaixo, o painel abre para cima.
+     */
+    function positionPanel() {
+        if (!quickRepliesPanel || !panelAnchorButton) return;
+
+        var anchor = panelAnchorButton.getBoundingClientRect();
+        var panelRect = quickRepliesPanel.getBoundingClientRect();
+        var panelWidth = panelRect.width;
+        var panelHeight = panelRect.height;
+
+        var viewportWidth = document.documentElement.clientWidth;
+        var viewportHeight = document.documentElement.clientHeight;
+
+        // Horizontal: alinha pela esquerda do botao, mas nunca ultrapassa as bordas.
+        var maxLeft = viewportWidth - panelWidth - VIEWPORT_MARGIN;
+        var left = Math.min(anchor.left, Math.max(VIEWPORT_MARGIN, maxLeft));
+        left = Math.max(VIEWPORT_MARGIN, left);
+
+        // Vertical: abaixo do botao por padrao; acima se nao couber e couber melhor la.
+        var spaceBelow = viewportHeight - anchor.bottom - VIEWPORT_MARGIN;
+        var spaceAbove = anchor.top - VIEWPORT_MARGIN;
+        var top;
+
+        if (panelHeight <= spaceBelow || spaceBelow >= spaceAbove) {
+            top = anchor.bottom + 5;
+        } else {
+            top = anchor.top - panelHeight - 5;
+        }
+
+        var maxTop = viewportHeight - panelHeight - VIEWPORT_MARGIN;
+        top = Math.min(top, Math.max(VIEWPORT_MARGIN, maxTop));
+        top = Math.max(VIEWPORT_MARGIN, top);
+
+        quickRepliesPanel.style.left = left + 'px';
+        quickRepliesPanel.style.top = top + 'px';
+    }
+
+    // Agrupa resize/scroll num unico recalculo por frame.
+    function scheduleReposition() {
+        if (!quickRepliesPanel || repositionScheduled) return;
+        repositionScheduled = true;
+        requestAnimationFrame(function () {
+            repositionScheduled = false;
+            positionPanel();
+        });
     }
 
     function closeQuickRepliesPanel() {
         if (quickRepliesPanel && quickRepliesPanel.parentNode) {
             quickRepliesPanel.remove();
-            quickRepliesPanel = null;
-            document.removeEventListener('click', handleOutsideClick);
         }
+        if (panelAnchorButton) {
+            panelAnchorButton.setAttribute('aria-expanded', 'false');
+        }
+        quickRepliesPanel = null;
+        panelAnchorButton = null;
+        document.removeEventListener('click', handleOutsideClick);
+        document.removeEventListener('keydown', handleEscape);
+    }
+
+    function handleEscape(e) {
+        if (e.key === 'Escape') closeQuickRepliesPanel();
     }
 
     function handleOutsideClick(e) {
         if (quickRepliesPanel && !quickRepliesPanel.contains(e.target)) {
-            const quickRepliesBtn = document.querySelector('.quick-replies-btn');
-            if (!quickRepliesBtn || !quickRepliesBtn.contains(e.target)) {
+            if (!panelAnchorButton || !panelAnchorButton.contains(e.target)) {
                 closeQuickRepliesPanel();
             }
         }
     }
 
-    // Tentar localizar um nome no cache sincronizado do Chrome Extension primeiro
-    // Se não ou não mudou nada ainda, procura ativamente por elementos no DOM
+    // Tentar localizar um nome no cache da extensao primeiro
+    // Se nao, procura ativamente por elementos no DOM
     function getZohoAuthor() {
         try {
-            const selectors = [
-                '#show-user-name', 
-                '#userName', 
-                '.user-name', 
-                '[data-zcqa="user_profile_name"]', 
-                '.profile-name', 
+            var selectors = [
+                '#show-user-name',
+                '#userName',
+                '.user-name',
+                '[data-zcqa="user_profile_name"]',
+                '.profile-name',
                 '#top-band-profile-name',
                 'a.profile_username span',
                 '#profile_name',
@@ -193,130 +341,191 @@
                 '.user-profile-name',
                 '#zcdropdown1_text' // Selector específico às vezes usado no Header
             ];
-            
-            for (const selector of selectors) {
-                const elem = document.querySelector(selector);
+
+            for (var i = 0; i < selectors.length; i++) {
+                var elem = document.querySelector(selectors[i]);
                 if (elem && elem.textContent && elem.textContent.trim().length > 0) {
                     return elem.textContent.trim();
                 }
             }
-            
+
             // As vezes está dentro do texto alternativo ou título das fotos (não a genérica)
-            const userImg = document.querySelector('#crm-setup-userpic, #topBand_user_icon_img, .profile-pic img, img[alt*="Profile"]');
+            var userImg = document.querySelector('#crm-setup-userpic, #topBand_user_icon_img, .profile-pic img, img[alt*="Profile"]');
             if (userImg) {
-                const alt = userImg.getAttribute('alt');
+                var alt = userImg.getAttribute('alt');
                 if (alt && alt.trim().length > 0 && alt.toLowerCase().indexOf('profile') === -1) {
                     return alt.trim();
                 }
-                const title = userImg.getAttribute('title');
+                var title = userImg.getAttribute('title');
                 if (title && title.trim().length > 0 && title.toLowerCase().indexOf('profile') === -1) {
                     return title.trim();
                 }
             }
 
             // Opcional limitador do class pattern (pesado). Reduzido para testar só primeiros 10 pra n travar.
-            const wildcardElems = document.querySelectorAll('span[class*="profile"], div[class*="profile"]');
-            const maxChecks = Math.min(wildcardElems.length, 10); 
-            for (let i = 0; i < maxChecks; i++) {
-                 const elem = wildcardElems[i];
-                 if(elem && elem.textContent) {
-                    const txt = elem.textContent.trim();
+            var wildcardElems = document.querySelectorAll('span[class*="profile"], div[class*="profile"]');
+            var maxChecks = Math.min(wildcardElems.length, 10);
+            for (var j = 0; j < maxChecks; j++) {
+                var el = wildcardElems[j];
+                if (el && el.textContent) {
+                    var txt = el.textContent.trim();
                     if (txt.length > 2 && txt.length < 30 && txt.toLowerCase().indexOf('profile') === -1 && txt.toLowerCase().indexOf('setting') === -1) {
                         return txt;
                     }
-                 }
+                }
             }
 
             return '';
-        } catch(e) {
-            console.error("Zoho replies error reading author", e);
+        } catch (e) {
+            console.error('Study Quest Replies: erro ao ler o autor', e);
             return '';
         }
     }
 
-    function loadQuickReplies(searchTerm = '', categoryFilter = '') {
-        fetch('https://cv.studyquestuk.com/api/replies', {
-            headers: { 'x-api-key': 'sq-54321-secret-key' }
-        })
-            .then(res => res.json())
-            .then(replies => {
+    function loadQuickReplies(searchTerm, categoryFilter) {
+        searchTerm = searchTerm || '';
+        categoryFilter = categoryFilter || '';
+
+        fetch(CFG.url('/replies'), { headers: CFG.headers(false) })
+            .then(function (res) {
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                return res.json();
+            })
+            .then(function (replies) {
                 displayQuickReplies(replies || [], searchTerm, categoryFilter);
             })
-            .catch(err => {
-                console.error('Erro ao buscar respostas do backend:', err);
-                displayQuickReplies([], searchTerm, categoryFilter);
+            .catch(function (err) {
+                console.error('Study Quest Replies: erro ao buscar respostas', err);
+                showListError(describeFetchError(err));
             });
     }
 
-    function displayQuickReplies(replies, searchTerm = '', categoryFilter = '') {
-        const listContainer = document.getElementById('quickRepliesList');
+    /** Traduz a falha em causa + acao, em vez de um "erro" generico. */
+    function describeFetchError(err) {
+        var msg = (err && err.message) || '';
+        if (msg.indexOf('HTTP 401') === 0 || msg.indexOf('HTTP 403') === 0) {
+            return 'Sem autorização para ler as respostas (a chave da API foi recusada). Avise o suporte.';
+        }
+        if (msg.indexOf('HTTP 5') === 0) {
+            return 'O servidor de respostas falhou (' + msg + '). Tente de novo em alguns minutos.';
+        }
+        if (msg.indexOf('HTTP') === 0) {
+            return 'O servidor respondeu ' + msg + '. Tente recarregar a página do CRM.';
+        }
+        return 'Não foi possível falar com o servidor de respostas (' +
+            (msg || 'falha de rede') + '). Verifique a conexão e se a extensão tem permissão para cv.studyquestuk.com.';
+    }
 
+    function showListError(message) {
+        var listContainer = document.getElementById('quickRepliesList');
+        if (!listContainer) return;
+        listContainer.textContent = '';
+        var div = document.createElement('div');
+        div.className = 'quick-replies-empty';
+        div.textContent = message;
+        listContainer.appendChild(div);
+    }
+
+    function displayQuickReplies(replies, searchTerm, categoryFilter) {
+        var listContainer = document.getElementById('quickRepliesList');
         if (!listContainer) return;
 
-        let filteredReplies = replies;
+        var filteredReplies = replies;
 
-        if (categoryFilter && categoryFilter !== '') {
-            filteredReplies = filteredReplies.filter(r => r.category === categoryFilter);
+        if (categoryFilter) {
+            filteredReplies = filteredReplies.filter(function (r) {
+                return r.category === categoryFilter;
+            });
         }
 
         if (searchTerm) {
-            const term = searchTerm.toLowerCase();
-            filteredReplies = filteredReplies.filter(reply =>
-                reply.title.toLowerCase().includes(term) ||
-                reply.text.toLowerCase().includes(term) ||
-                (reply.category && reply.category.toLowerCase().includes(term))
-            );
+            var term = searchTerm.toLowerCase();
+            filteredReplies = filteredReplies.filter(function (reply) {
+                return (reply.title || '').toLowerCase().indexOf(term) !== -1 ||
+                    (reply.text || '').toLowerCase().indexOf(term) !== -1 ||
+                    (reply.category || '').toLowerCase().indexOf(term) !== -1;
+            });
         }
 
-        if (filteredReplies.length === 0) {
-            listContainer.innerHTML = `
-                <div class="quick-replies-empty">
-                    ${searchTerm ? 'Nenhuma resposta encontrada' : 'Nenhuma resposta cadastrada'}
-                </div>
-            `;
-            return;
-        }
-
-        // Extrair categorias para o select
-        const categories = [...new Set(replies.map(r => r.category || 'Geral'))].sort();
-        const selectElem = document.getElementById('quickRepliesCategoryFilter');
+        // Popular o filtro de categorias a partir da lista completa (nao da filtrada),
+        // senao filtrar por uma categoria apagaria as outras opcoes do select.
+        var selectElem = document.getElementById('quickRepliesCategoryFilter');
         if (selectElem && selectElem.options.length <= 1) {
-            categories.forEach(cat => {
-                const opt = document.createElement('option');
+            var categories = [];
+            replies.forEach(function (r) {
+                var c = r.category || 'Geral';
+                if (categories.indexOf(c) === -1) categories.push(c);
+            });
+            categories.sort().forEach(function (cat) {
+                var opt = document.createElement('option');
                 opt.value = cat;
                 opt.textContent = cat;
                 selectElem.appendChild(opt);
             });
         }
 
-        listContainer.innerHTML = filteredReplies.map(reply => `
-            <div class="quick-reply-item" data-id="${reply.id}">
-                <div class="quick-reply-title">
-                    ${escapeHtml(reply.title)}
-                    <span style="font-size: 10px; background: #eee; padding: 2px 4px; border-radius: 4px; color: #555; margin-left: 4px;">
-                        ${escapeHtml(reply.category || 'Geral')}
-                    </span>
-                </div>
-                <div class="quick-reply-text">${escapeHtml(reply.text)}</div>
-                <div style="font-size: 10px; color: #888; margin-top: 4px;">Por: ${escapeHtml(reply.author || 'User')}</div>
-            </div>
-        `).join('');
+        listContainer.textContent = '';
 
-        listContainer.querySelectorAll('.quick-reply-item').forEach(item => {
-            item.addEventListener('click', function () {
-                const id = this.dataset.id;
-                const reply = filteredReplies.find(r => r.id === id);
-                if (reply) {
-                    insertReplyIntoEditor(reply.title, reply.text);
+        if (filteredReplies.length === 0) {
+            var empty = document.createElement('div');
+            empty.className = 'quick-replies-empty';
+            empty.textContent = searchTerm || categoryFilter
+                ? 'Nenhuma resposta encontrada para esse filtro'
+                : 'Nenhuma resposta cadastrada';
+            listContainer.appendChild(empty);
+            scheduleReposition();
+            return;
+        }
+
+        filteredReplies.forEach(function (reply) {
+            var item = document.createElement('div');
+            item.className = 'quick-reply-item';
+            item.setAttribute('role', 'button');
+            item.setAttribute('tabindex', '0');
+
+            var title = document.createElement('div');
+            title.className = 'quick-reply-title';
+            title.appendChild(document.createTextNode(reply.title || ''));
+
+            var badge = document.createElement('span');
+            badge.className = 'quick-reply-badge';
+            badge.textContent = reply.category || 'Geral';
+            title.appendChild(badge);
+
+            var text = document.createElement('div');
+            text.className = 'quick-reply-text';
+            text.textContent = reply.text || '';
+
+            var author = document.createElement('div');
+            author.className = 'quick-reply-author';
+            author.textContent = 'Por: ' + (reply.author || 'User');
+
+            item.appendChild(title);
+            item.appendChild(text);
+            item.appendChild(author);
+
+            function insert() {
+                insertReplyIntoEditor(reply.title, reply.text);
+            }
+            item.addEventListener('click', insert);
+            item.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    insert();
                 }
             });
+
+            listContainer.appendChild(item);
         });
+
+        // A altura mudou: reancorar para o painel nao vazar pela borda de baixo.
+        scheduleReposition();
     }
 
     function handleSearch() {
         if (!quickRepliesPanel) return;
-        const searchTerm = quickRepliesPanel.querySelector('.quick-replies-search-input').value;
-        const categoryFilter = quickRepliesPanel.querySelector('#quickRepliesCategoryFilter').value;
+        var searchTerm = quickRepliesPanel.querySelector('.quick-replies-search-input').value;
+        var categoryFilter = quickRepliesPanel.querySelector('#quickRepliesCategoryFilter').value;
         loadQuickReplies(searchTerm, categoryFilter);
     }
 
@@ -324,73 +533,121 @@
         if (!currentEditor) return;
 
         // Preenche o campo de título da nota
-        const titleInput = currentEditor.querySelector('input.cxNoteTitleInputElem');
+        var titleInput = currentEditor.querySelector('input.cxNoteTitleInputElem');
         if (titleInput) {
             titleInput.value = title;
             titleInput.dispatchEvent(new Event('input', { bubbles: true }));
         }
 
         // Preenche o corpo da nota
-        const bodyEditor = currentEditor.querySelector('.lyteEditorMainDiv');
+        var bodyEditor = currentEditor.querySelector('.lyteEditorMainDiv');
 
         if (!bodyEditor) {
             showNotification('Abra o editor de nota antes de inserir.', 'error');
             return;
         }
 
-        const editable = bodyEditor.getAttribute('contenteditable')
+        var editable = bodyEditor.getAttribute('contenteditable')
             ? bodyEditor
             : (bodyEditor.querySelector('[contenteditable="true"]') || bodyEditor);
 
         editable.focus();
 
-        const sel = window.getSelection();
-        const range = document.createRange();
+        var sel = window.getSelection();
+        var range = document.createRange();
         range.selectNodeContents(editable);
         range.collapse(false);
         sel.removeAllRanges();
         sel.addRange(range);
 
-        document.execCommand('insertText', false, text);
+        if (!insertTextAtCaret(editable, text)) {
+            showNotification('Não foi possível inserir o texto no editor do CRM. Copie manualmente.', 'error');
+            return;
+        }
 
         closeQuickRepliesPanel();
         showNotification('Texto inserido com sucesso!');
     }
 
-    function showNotification(message, type = 'success') {
-        const notification = document.createElement('div');
-        notification.className = `quick-replies-notification ${type}`;
+    /**
+     * Insere texto no cursor de um contenteditable.
+     *
+     * `execCommand` e obsoleto e cada navegador o trata de um jeito, entao ele
+     * e apenas a primeira tentativa; se falhar ou nao alterar nada, o texto e
+     * inserido pela Selection API, que e o caminho padronizado. O `input`
+     * sintetico no fim e o que faz o editor do Zoho perceber a mudanca.
+     */
+    function insertTextAtCaret(editable, text) {
+        var before = editable.textContent;
+
+        try {
+            if (document.execCommand && document.execCommand('insertText', false, text)) {
+                if (editable.textContent !== before) return true;
+            }
+        } catch (e) {
+            // Segue para o caminho padronizado abaixo.
+        }
+
+        try {
+            var sel = window.getSelection();
+            if (!sel || sel.rangeCount === 0) return false;
+
+            var range = sel.getRangeAt(0);
+            range.deleteContents();
+
+            // Preservar quebras de linha: o texto vem de um textarea.
+            var fragment = document.createDocumentFragment();
+            var lines = String(text).split('\n');
+            lines.forEach(function (line, i) {
+                if (i > 0) fragment.appendChild(document.createElement('br'));
+                fragment.appendChild(document.createTextNode(line));
+            });
+
+            var lastNode = fragment.lastChild;
+            range.insertNode(fragment);
+
+            if (lastNode) {
+                range.setStartAfter(lastNode);
+                range.collapse(true);
+                sel.removeAllRanges();
+                sel.addRange(range);
+            }
+
+            editable.dispatchEvent(new Event('input', { bubbles: true }));
+            return editable.textContent !== before;
+        } catch (e) {
+            console.error('Study Quest Replies: falha ao inserir texto', e);
+            return false;
+        }
+    }
+
+    function showNotification(message, type) {
+        var notification = document.createElement('div');
+        notification.className = 'quick-replies-notification ' + (type || 'success');
+        notification.setAttribute('role', 'status');
         notification.textContent = message;
 
         document.body.appendChild(notification);
 
-        setTimeout(() => {
+        setTimeout(function () {
             notification.classList.add('show');
         }, 10);
 
-        setTimeout(() => {
+        setTimeout(function () {
             notification.classList.remove('show');
-            setTimeout(() => notification.remove(), 300);
+            setTimeout(function () { notification.remove(); }, 300);
         }, 2000);
     }
 
-    function escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
-    }
-
-    // --- Nova Funcionalidade de WhatsApp ---
+    // --- Funcionalidade de WhatsApp ---
 
     function checkForPhoneNumbers() {
-        // Find crux-phone-component and elements with call icons
-        const phoneComponents = document.querySelectorAll('crux-phone-component:not([data-wa-added])');
-        const callContainers = document.querySelectorAll('crmutil-icon[icon-name^="call"]:not([data-wa-added])');
+        var phoneComponents = document.querySelectorAll('crux-phone-component:not([data-wa-added])');
+        var callContainers = document.querySelectorAll('crmutil-icon[icon-name^="call"]:not([data-wa-added])');
 
-        // Handle crux-phone-component
-        phoneComponents.forEach(comp => {
-            const phoneSpan = comp.querySelector('.lvPhFld');
-            let phone = '';
+        phoneComponents.forEach(function (comp) {
+            var phoneSpan = comp.querySelector('.lvPhFld');
+            var phone = '';
             if (phoneSpan) {
                 phone = phoneSpan.textContent.trim();
             } else {
@@ -403,13 +660,11 @@
             }
         });
 
-        // Handle basic divs with call icons
-        callContainers.forEach(icon => {
-            const parent = icon.parentElement;
+        callContainers.forEach(function (icon) {
+            var parent = icon.parentElement;
             if (parent && parent.textContent) {
-                const text = parent.textContent.trim();
-                // Extract clean phone removing everything except digits and plus sign
-                const cleanPhone = text.replace(/[^\d+]/g, '');
+                var text = parent.textContent.trim();
+                var cleanPhone = text.replace(/[^\d+]/g, '');
                 if (cleanPhone.length > 5) {
                     injectWhatsAppButton(parent, cleanPhone);
                     icon.dataset.waAdded = 'true';
@@ -419,20 +674,18 @@
     }
 
     function injectWhatsAppButton(container, phoneNumber) {
-        // Clean the phone number (remove spaces, letters, etc., keep only digits and +)
-        const cleanPhone = phoneNumber.replace(/[^\d+]/g, '');
+        var cleanPhone = phoneNumber.replace(/[^\d+]/g, '');
+        var finalPhoneForLink = cleanPhone.charAt(0) === '+' ? cleanPhone.substring(1) : cleanPhone;
+        var waLink = 'https://wa.me/' + finalPhoneForLink;
 
-        // Generate WhatsApp link (remove + at the beginning for wa.me)
-        const finalPhoneForLink = cleanPhone.startsWith('+') ? cleanPhone.substring(1) : cleanPhone;
-        const waLink = `https://wa.me/${finalPhoneForLink}`;
-
-        // Create the WhatsApp Button
-        const waBtn = document.createElement('a');
+        var waBtn = document.createElement('a');
         waBtn.href = waLink;
         waBtn.target = '_blank';
+        waBtn.rel = 'noopener noreferrer';
         waBtn.className = 'zoho-wa-btn';
         waBtn.title = 'Abrir no WhatsApp';
-        waBtn.innerHTML = `<svg viewBox="0 0 24 24" width="18" height="18" fill="#25D366"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>`;
+        waBtn.setAttribute('aria-label', 'Abrir ' + cleanPhone + ' no WhatsApp');
+        waBtn.appendChild(makeSvg(ICON_WHATSAPP, 18, '#25D366'));
 
         waBtn.style.display = 'inline-flex';
         waBtn.style.alignItems = 'center';
@@ -443,47 +696,37 @@
         waBtn.style.verticalAlign = 'middle';
         waBtn.style.transition = 'transform 0.2s';
 
-        waBtn.addEventListener('mouseenter', () => waBtn.style.transform = 'scale(1.1)');
-        waBtn.addEventListener('mouseleave', () => waBtn.style.transform = 'scale(1)');
+        waBtn.addEventListener('mouseenter', function () { waBtn.style.transform = 'scale(1.1)'; });
+        waBtn.addEventListener('mouseleave', function () { waBtn.style.transform = 'scale(1)'; });
 
-        // Prevent event from bubbling up to the inline edit trigger
-        const preventEdit = (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-        };
-
-        const interceptEvents = ['mousedown', 'mouseup', 'click', 'pointerdown', 'pointerup', 'dragstart', 'touchstart', 'touchend'];
-        interceptEvents.forEach(evt => {
-            waBtn.addEventListener(evt, (e) => {
-                e.stopPropagation();
-            });
-            waBtn.addEventListener(evt, (e) => {
-                e.stopPropagation();
-            }, true);
+        // Impede que o clique suba e abra a edicao inline do Zoho.
+        var interceptEvents = ['mousedown', 'mouseup', 'click', 'pointerdown', 'pointerup', 'dragstart', 'touchstart', 'touchend'];
+        interceptEvents.forEach(function (evt) {
+            waBtn.addEventListener(evt, function (e) { e.stopPropagation(); });
+            waBtn.addEventListener(evt, function (e) { e.stopPropagation(); }, true);
         });
 
-        // Permitir que o link abra a aba manualmente no click, pois cancelamos a propagação
-        waBtn.addEventListener('click', (e) => {
+        // Como cancelamos a propagacao, abrimos a aba manualmente.
+        waBtn.addEventListener('click', function (e) {
             e.preventDefault();
-            window.open(waLink, '_blank');
+            window.open(waLink, '_blank', 'noopener');
         });
 
         // Container-specific positioning
-        let labelElem = null;
-        let curr = container;
-        for (let i = 0; i < 6; i++) {
+        var labelElem = null;
+        var curr = container;
+        for (var i = 0; i < 6; i++) {
             if (!curr || curr === document.body) break;
-            const parent = curr.parentElement;
+            var parent = curr.parentElement;
             if (!parent) break;
 
-            // Search before curr for labels
-            let prev = curr.previousElementSibling;
+            var prev = curr.previousElementSibling;
             while (prev) {
-                if (prev.tagName === 'TH' || prev.tagName === 'LABEL' || (typeof prev.className === 'string' && prev.className.match(/label|tit/i)) || prev.tagName.match(/label/i)) {
+                if (prev.tagName === 'TH' || prev.tagName === 'LABEL' || (typeof prev.className === 'string' && prev.className.match(/label|tit/i))) {
                     labelElem = prev;
                     break;
                 }
-                const inner = prev.querySelector('label, [class*="label"], [class*="Label"]');
+                var inner = prev.querySelector('label, [class*="label"], [class*="Label"]');
                 if (inner) {
                     labelElem = inner;
                     break;
@@ -492,8 +735,8 @@
             }
             if (labelElem) break;
 
-            const labels = parent.querySelectorAll('label, th, [class*="label"], [class*="Label"]');
-            for (let j = 0; j < labels.length; j++) {
+            var labels = parent.querySelectorAll('label, th, [class*="label"], [class*="Label"]');
+            for (var j = 0; j < labels.length; j++) {
                 if (!labels[j].contains(container)) {
                     labelElem = labels[j];
                     break;
@@ -502,7 +745,7 @@
             if (labelElem) break;
 
             if (parent.tagName === 'TR') {
-                const headCell = parent.querySelector('th, td.label-cell, td[class*="Label"]');
+                var headCell = parent.querySelector('th, td.label-cell, td[class*="Label"]');
                 if (headCell) {
                     labelElem = headCell;
                     break;
@@ -511,84 +754,49 @@
             curr = parent;
         }
 
+        waBtn.style.margin = '0 6px 0 0';
+        waBtn.style.display = 'inline-block';
+        waBtn.style.verticalAlign = 'middle';
+
         if (labelElem) {
-            // Find inner-most text container wrapper to avoid breaking layouts
-            const textContainer = labelElem.querySelector('span:not(.zoho-wa-btn), div:not(.zoho-wa-btn), b, strong') || labelElem;
-
-            waBtn.style.margin = '0 6px 0 0';
-            waBtn.style.display = 'inline-block';
-            waBtn.style.verticalAlign = 'middle';
-
-            // Just insert without changing container layout
+            var textContainer = labelElem.querySelector('span:not(.zoho-wa-btn), div:not(.zoho-wa-btn), b, strong') || labelElem;
             textContainer.insertBefore(waBtn, textContainer.firstChild);
         } else {
-            // Fallback: put it far to the left of the component outer box
-            waBtn.style.margin = '0 6px 0 0';
-            waBtn.style.display = 'inline-block';
-            waBtn.style.verticalAlign = 'middle';
-
-            let injectionTarget = container;
+            var injectionTarget = container;
             if (container.tagName.toLowerCase() === 'crux-phone-component') {
-                const zpbWrap = container.closest('span[class*="phoneRtlA"]');
+                var zpbWrap = container.closest('span[class*="phoneRtlA"]');
                 if (zpbWrap && zpbWrap.parentElement) {
                     injectionTarget = zpbWrap.parentElement;
                 } else {
-                    const viewWrap = container.querySelector('.cxPhoneViewZPBEnabledIconWrap') || container.querySelector('.cxPhoneViewZPBEnabled');
+                    var viewWrap = container.querySelector('.cxPhoneViewZPBEnabledIconWrap') || container.querySelector('.cxPhoneViewZPBEnabled');
                     if (viewWrap && viewWrap.parentElement) injectionTarget = viewWrap.parentElement;
                 }
             }
-
-            // Just insert without changing container layout
             injectionTarget.insertBefore(waBtn, injectionTarget.firstChild);
         }
     }
 
-    // --- Nova Funcionalidade: Botão de Copiar Texto ---
+    // --- Botão de Copiar Texto ---
 
     function checkForInputs() {
-        // Selecionar os componentes que guardam valor. Retornando SOMENTE as caixas de valor finais (para não sujar menus e Labels esquerdas)
-        const textComponents = document.querySelectorAll(`
-            .dv_info_value_field:not([data-copy-added])
-        `);
-        
-        textComponents.forEach(comp => {
-            // Ignorar celulas de lista que contem checkbox, tags, ou ícones de ação (para não quebrar a table)
-            if(comp.querySelector('crmutil-icon') || 
-               comp.classList.contains('lvCheckboxCol') || 
-               comp.classList.contains('lvEditIconCol') ||
-               comp.classList.contains('lv_activityLink') ||
-               comp.classList.contains('lv_noCustomBtn') ||
-               comp.classList.contains('lv_fixedLastCol')
+        // Somente as caixas de valor finais (para nao sujar menus e labels da esquerda)
+        var textComponents = document.querySelectorAll('.dv_info_value_field:not([data-copy-added])');
+        var pending = [];
+
+        textComponents.forEach(function (comp) {
+            // Ignorar celulas de lista com checkbox, tags ou icones de acao (nao quebrar a tabela)
+            if (comp.querySelector('crmutil-icon') ||
+                comp.classList.contains('lvCheckboxCol') ||
+                comp.classList.contains('lvEditIconCol') ||
+                comp.classList.contains('lv_activityLink') ||
+                comp.classList.contains('lv_noCustomBtn') ||
+                comp.classList.contains('lv_fixedLastCol')
             ) {
                 comp.dataset.copyAdded = 'true';
                 return;
             }
 
-            let valueToCopy = '';
-            
-            // 1. Tentar pegar valor de inputs e textareas se estiverem editáveis
-            const input = comp.querySelector('input[type="text"], input[type="number"], input[type="email"], textarea');
-            // 2. Alguns componentes crux expõem o valor via cx-prop-value
-            const cruxComp = comp.querySelector('[cx-prop-value]');
-            // 3. Container padrão do Zoho para dados de formulário em leitura
-            const crmDetailFields = comp.querySelector('crm-detailview-fields');
-            
-            if (input && input.value) {
-                valueToCopy = input.value;
-            } else if (cruxComp && cruxComp.getAttribute('cx-prop-value') && cruxComp.getAttribute('cx-prop-value').trim() !== '') {
-                valueToCopy = cruxComp.getAttribute('cx-prop-value');
-            } else if (crmDetailFields) {
-                // Verificar se o campo não está sinalizado como vazio (exemplo: ícone mínus ou span invisivel)
-                if (!crmDetailFields.querySelector('.dv_noDataSign') && !crmDetailFields.classList.contains('dv_noDataSign')) {
-                    // Extrair apenas os textos reais que foram printados dentro dele (evita tags e placeholders escondidos)
-                    const tempClone = crmDetailFields.cloneNode(true);
-                    // remover dummy
-                    tempClone.querySelectorAll('dummy-port-element').forEach(e => e.remove());
-                    valueToCopy = tempClone.textContent.trim();
-                }
-            } else {
-                valueToCopy = comp.textContent.trim();
-            }
+            var valueToCopy = readFieldValue(comp);
 
             if (valueToCopy && valueToCopy.length >= 5000) {
                 // Muito grande, ignorar para performance
@@ -596,167 +804,188 @@
                 return;
             }
 
-            // Injetar SEMPRE para que quando a pessoa preencher algo sem atualizar a tela o botão funcione!
-            injectCopyButton(comp, valueToCopy);
+            // Injetar SEMPRE: se a pessoa preencher o campo depois, o botao ja esta la.
+            pending.push(buildCopyButton(comp));
             comp.dataset.copyAdded = 'true';
         });
+
+        // Um unico frame para todas as insercoes do lote. Antes cada botao
+        // agendava seu proprio setTimeout e mexia no layout do pai, o que
+        // multiplicava reflows numa tela com dezenas de campos.
+        if (pending.length) {
+            requestAnimationFrame(function () {
+                pending.forEach(function (task) { task(); });
+            });
+        }
     }
 
-    function injectCopyButton(container, textToCopy) {
-        // Criar o Botão de Captura/Cópia
-        const copyBtn = document.createElement('a');
-        copyBtn.href = "#";
+    /** Le o valor exibido de um campo do Zoho, cobrindo os formatos conhecidos. */
+    function readFieldValue(container) {
+        var input = container.querySelector('input[type="text"], input[type="number"], input[type="email"], textarea');
+        if (input && input.value) return input.value;
+
+        var cruxComp = container.querySelector('[cx-prop-value]');
+        if (cruxComp) {
+            var attr = cruxComp.getAttribute('cx-prop-value');
+            if (attr && attr.trim() !== '') return attr;
+        }
+
+        var crmDetailFields = container.querySelector('crm-detailview-fields');
+        if (crmDetailFields) {
+            // Campo sinalizado como vazio pelo proprio Zoho
+            if (crmDetailFields.querySelector('.dv_noDataSign') || crmDetailFields.classList.contains('dv_noDataSign')) {
+                return '';
+            }
+            var tempClone = crmDetailFields.cloneNode(true);
+            tempClone.querySelectorAll('dummy-port-element').forEach(function (e) { e.remove(); });
+            return tempClone.textContent.trim();
+        }
+
+        return container.textContent.trim();
+    }
+
+    /** Cria o botao de copiar e devolve a funcao que o insere no DOM. */
+    function buildCopyButton(container) {
+        var copyBtn = document.createElement('button');
+        copyBtn.type = 'button';
         copyBtn.className = 'zoho-copy-btn';
         copyBtn.title = 'Copiar conteúdo';
-        
-        // Ícone de prancheta minimalista
-        copyBtn.innerHTML = `<svg viewBox="0 0 24 24" width="16" height="16" fill="#666"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>`;
+        copyBtn.setAttribute('aria-label', 'Copiar conteúdo do campo');
+
+        /** Troca o icone do botao, sempre por DOM. */
+        function setIcon(pathData, fill) {
+            copyBtn.textContent = '';
+            copyBtn.appendChild(makeSvg(pathData, 16, fill));
+        }
+
+        setIcon(ICON_CLIPBOARD, '#666');
 
         copyBtn.style.display = 'inline-flex';
         copyBtn.style.alignItems = 'center';
         copyBtn.style.justifyContent = 'center';
-        copyBtn.style.marginLeft = '8px';
         copyBtn.style.cursor = 'pointer';
-        copyBtn.style.textDecoration = 'none';
         copyBtn.style.verticalAlign = 'middle';
-        copyBtn.style.transition = 'all 0.2s ease';
+        copyBtn.style.transition = 'background 0.2s ease';
         copyBtn.style.padding = '2px';
+        copyBtn.style.border = 'none';
+        copyBtn.style.background = 'transparent';
         copyBtn.style.borderRadius = '4px';
+        copyBtn.style.flexShrink = '0';
+        copyBtn.style.margin = '2px 8px 0 0';
 
-        copyBtn.addEventListener('mouseenter', () => {
+        copyBtn.addEventListener('mouseenter', function () {
             copyBtn.style.background = '#f0f0f0';
             copyBtn.querySelector('svg').style.fill = '#333';
         });
-        copyBtn.addEventListener('mouseleave', () => {
+        copyBtn.addEventListener('mouseleave', function () {
             copyBtn.style.background = 'transparent';
             copyBtn.querySelector('svg').style.fill = '#666';
         });
 
-        // Função helper de sucesso
-        const showSuccess = () => {
-            const originalSvg = copyBtn.innerHTML;
-            copyBtn.innerHTML = `<svg viewBox="0 0 24 24" width="16" height="16" fill="#4CAF50"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>`;
+        function showSuccess() {
+            setIcon(ICON_CHECK, '#4CAF50');
             showNotification('Copiado para a área de transferência!', 'success');
-            setTimeout(() => {
-                copyBtn.innerHTML = originalSvg;
+            setTimeout(function () {
+                setIcon(ICON_CLIPBOARD, '#666');
             }, 1500);
-        };
+        }
 
-        // Evento principal para copiar
-        copyBtn.addEventListener('click', (e) => {
-            // Removendo event preventDefault e stopPropagation muito agressivos aqui, eles podem bloquear o Clipboard!
+        copyBtn.addEventListener('click', function (e) {
             e.preventDefault();
-            
-            // ATUALIZAR O TEXTO NA HORA DO CLIQUE (Caso ele tenha adicionado um campo antes vazio)
-            let currentText = '';
-            const input = container.querySelector('input[type="text"], input[type="number"], input[type="email"], textarea');
-            const cruxComp = container.querySelector('[cx-prop-value]');
-            const crmDetailFields = container.querySelector('crm-detailview-fields');
-            
-            if (input && input.value) {
-                currentText = input.value;
-            } else if (cruxComp && cruxComp.getAttribute('cx-prop-value') && cruxComp.getAttribute('cx-prop-value').trim() !== '') {
-                currentText = cruxComp.getAttribute('cx-prop-value');
-            } else if (crmDetailFields) {
-                if (!crmDetailFields.querySelector('.dv_noDataSign') && !crmDetailFields.classList.contains('dv_noDataSign')) {
-                    const tempClone = crmDetailFields.cloneNode(true);
-                    tempClone.querySelectorAll('dummy-port-element').forEach(e => e.remove());
-                    currentText = tempClone.textContent.trim();
-                }
-            } else {
-                currentText = container.textContent.trim();
-            }
-            
-            // Impedir clique se não tiver nada
+
+            // Reler no clique: o campo pode ter sido preenchido depois da injecao.
+            var currentText = readFieldValue(container);
+
             if (!currentText || currentText === '--' || currentText === 'null') {
                 showNotification('Campo vazio, nada para copiar', 'error');
                 return;
             }
 
-            navigator.clipboard.writeText(currentText).then(() => {
-                showSuccess();
-            }).catch(err => {
-                console.error('Falha ao usar writeText, caindo para fallback:', err);
-                fallbackCopy(currentText);
-            });
+            copyText(currentText, showSuccess);
         });
 
-        const fallbackCopy = (text) => {
-            const textArea = document.createElement("textarea");
-            textArea.value = text;
-            textArea.style.position = "fixed";
-            textArea.style.top = "-9999px";
-            textArea.style.left = "-9999px";
-            document.body.appendChild(textArea);
-            
-            // Foco e Selection ajudam em navegadores mais criteriosos
-            textArea.focus();
-            textArea.select();
-            
-            try {
-                // Comando síncrono que sempre roda dentro de click em extensões
-                const successful = document.execCommand('copy');
-                if (successful) showSuccess();
-                else showNotification('Falha ao copiar (fallback falhou)', 'error');
-            } catch (err) {
-                console.error("Exec command copy error", err);
-                showNotification('Erro ao copiar', 'error');
-            }
-            document.body.removeChild(textArea);
-        };
-
-        // Impede a janela de edição inline de abrir no click
-        const preventEdit = (e) => {
-            e.stopPropagation(); // Apenas paramos a propagação na bolha nativa, para que n suba pro <tr> do zoho
-        };
-
-        const interceptEvents = ['mousedown', 'mouseup', 'click'];
-        interceptEvents.forEach(evt => {
-            copyBtn.addEventListener(evt, preventEdit, false);
+        // Nao deixar o clique subir e abrir a edicao inline do Zoho.
+        ['mousedown', 'mouseup', 'click'].forEach(function (evt) {
+            copyBtn.addEventListener(evt, function (e) { e.stopPropagation(); }, false);
         });
 
-        // Modificação de Posicionamento - Nova Lógica Simplificada
-        // Ao invés de lutar com z-indexes absolutos (info icons) das labels...
-        // Vamos forçar visualmente O BOTÃO ANTES DO VALOR, LITERALMENTE.
-        // O `container` atual é a caixa que abraça o valor, por exemplo: `<div id="ajaxEdit_..." class="dv_info_value_field dF aiCenter">`
-        
-        copyBtn.style.flexShrink = '0';
-        copyBtn.style.margin = '2px 8px 0 0'; // Espaço até a caixa do valor e centralização
-        
-        // Em um "display: flex" padrão do Zoho (dvValueContainer), insertBefore no container garante esquerda limpa.
-        setTimeout(() => {
-            if (container && container.parentNode) {
-                const parent = container.parentNode;
-                
-                // Forçar alinhamento horizontal no PAI absoluto para evitar que o botão caia para cima/baixo do texto
-                parent.style.display = 'flex';
-                parent.style.flexDirection = 'row';
-                parent.style.alignItems = 'center';
+        return function insert() {
+            if (!container || !container.parentNode) return;
+            var parent = container.parentNode;
 
-                // Exatamente o elemento do meio que fica entre o lado esquerdo (Label) e o direito (Caixa editávelinteira)
-                if (parent.classList.contains('dvValueContainer') || 
-                    parent.classList.contains('dv_info_value') || 
-                    parent.classList.contains('lv_data_textfield') ||
-                    parent.classList.contains('lv_data_phone') ||
-                    parent.classList.contains('lv_data_email')) {
-                    // Coloca O botão FORA e ANTES da caixa de valor, assim se ela de vazia for editada, não atropela!
-                    parent.insertBefore(copyBtn, container);
-                } else {
-                    // Fallback extremo
-                    copyBtn.style.margin = '0 6px 0 0';
-                    container.insertBefore(copyBtn, container.firstChild);
-                }
+            parent.style.display = 'flex';
+            parent.style.flexDirection = 'row';
+            parent.style.alignItems = 'center';
+
+            if (parent.classList.contains('dvValueContainer') ||
+                parent.classList.contains('dv_info_value') ||
+                parent.classList.contains('lv_data_textfield') ||
+                parent.classList.contains('lv_data_phone') ||
+                parent.classList.contains('lv_data_email')) {
+                // Botao FORA e ANTES da caixa de valor, para nao atropelar a edicao.
+                parent.insertBefore(copyBtn, container);
+            } else {
+                copyBtn.style.margin = '0 6px 0 0';
+                container.insertBefore(copyBtn, container.firstChild);
             }
-        }, 150);
+        };
     }
 
-    // Escutar pedidos do Popup (Ex: requisição do nome do usuario logado no Zoho)
-    chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
-        if (request.action === 'getAuthor') {
-            const authorName = getZohoAuthor();
-            sendResponse({ author: authorName });
+    /**
+     * Copia texto cobrindo os tres cenarios: a Clipboard API moderna, a recusa
+     * por falta de permissao (Firefox pede `clipboardWrite`) e navegadores em
+     * que ela nao existe — nesse caso cai no textarea + execCommand, que ainda
+     * funciona por rodar dentro do gesto do usuario.
+     */
+    function copyText(text, onSuccess) {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(onSuccess).catch(function (err) {
+                console.warn('Study Quest Replies: clipboard API recusada, usando fallback', err);
+                fallbackCopy(text, onSuccess);
+            });
+            return;
         }
-        return true;
+        fallbackCopy(text, onSuccess);
+    }
+
+    function fallbackCopy(text, onSuccess) {
+        var textArea = document.createElement('textarea');
+        textArea.value = text;
+        textArea.setAttribute('readonly', '');
+        textArea.style.position = 'fixed';
+        textArea.style.top = '0';
+        textArea.style.left = '0';
+        textArea.style.opacity = '0';
+        textArea.style.pointerEvents = 'none';
+        document.body.appendChild(textArea);
+
+        // Foco e selecao explicitos: o Safari ignora `select()` sozinho em iOS.
+        textArea.focus();
+        textArea.select();
+        if (textArea.setSelectionRange) {
+            textArea.setSelectionRange(0, text.length);
+        }
+
+        try {
+            if (document.execCommand('copy')) {
+                onSuccess();
+            } else {
+                showNotification('O navegador bloqueou a cópia. Selecione o texto e use Ctrl+C.', 'error');
+            }
+        } catch (err) {
+            console.error('Study Quest Replies: erro ao copiar', err);
+            showNotification('O navegador bloqueou a cópia (' + (err.message || 'motivo desconhecido') + '). Use Ctrl+C.', 'error');
+        }
+
+        document.body.removeChild(textArea);
+    }
+
+    // Escutar pedidos do Popup (ex.: nome do usuario logado no Zoho)
+    SQ.onMessage(function (request) {
+        if (request && request.action === 'getAuthor') {
+            return { author: getZohoAuthor() };
+        }
+        return undefined;
     });
 
 })();

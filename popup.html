@@ -10,54 +10,57 @@
 
 <body>
   <header>
-    <img src="icons/icon16.png" class="logo" alt="Logo">
+    <img src="icons/icon16.png" class="logo" alt="Study Quest">
     Study Quest Extension
   </header>
   <div class="container">
-    <div id="alert" class="alert hidden"></div>
+    <div id="alert" class="alert hidden" role="status" aria-live="polite"></div>
 
     <form id="replyForm">
       <h3 class="section-title">Nova Resposta</h3>
-      <label for="replyTitle">Título</label>
-      <input type="text" id="replyTitle" placeholder="Ex: Saudação inicial" required>
+
+      <div class="form-group">
+        <label for="replyTitle">Título</label>
+        <input type="text" id="replyTitle" name="replyTitle" autocomplete="off"
+          placeholder="Ex.: Saudação inicial" required>
+      </div>
 
       <div class="form-group">
         <label for="replyCategory">Categoria</label>
-        <div id="categorySelectWrap" style="display: flex; gap: 8px;">
-          <select id="replyCategory"
-            style="flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 13px;">
+        <div id="categorySelectWrap" class="input-row">
+          <select id="replyCategory" name="replyCategory" class="field">
             <option value="" disabled selected>Selecione uma categoria...</option>
           </select>
-          <button type="button" id="btnNewCategory"
-            style="padding: 0 15px; background: #e0e0e0; color: #333; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; transition: background 0.2s;"
-            title="Criar nova categoria">+</button>
+          <button type="button" id="btnNewCategory" class="btn-icon" title="Criar nova categoria"
+            aria-label="Criar nova categoria">+</button>
         </div>
-        <div id="categoryInputWrap" style="display: none; gap: 8px;">
-          <input type="text" id="newCategoryInput" placeholder="Nome da nova categoria..."
-            style="flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 13px;">
-          <button type="button" id="btnCancelCategory"
-            style="padding: 0 15px; background: #ffebee; color: #c62828; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; transition: background 0.2s;"
-            title="Cancelar">✕</button>
+        <div id="categoryInputWrap" class="input-row is-hidden">
+          <input type="text" id="newCategoryInput" name="newCategoryInput" class="field" autocomplete="off"
+            placeholder="Ex.: Admissions">
+          <button type="button" id="btnCancelCategory" class="btn-icon btn-icon-danger" title="Cancelar"
+            aria-label="Cancelar nova categoria">✕</button>
         </div>
       </div>
 
       <div class="form-group">
         <label for="replyText">Texto da Resposta</label>
-        <textarea id="replyText" placeholder="Digite a resposta completa aqui..." required rows="4"></textarea>
+        <textarea id="replyText" name="replyText" placeholder="Digite a resposta completa aqui..." required
+          rows="4"></textarea>
       </div>
 
       <button type="submit" id="submitBtn">Adicionar Resposta Rápida</button>
     </form>
 
-    <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 24px; margin-bottom: 12px;">
-      <h3 class="section-title" style="margin: 0;">Minhas Respostas</h3>
-      <button type="button" id="btnDeleteCategory"
-        style="padding: 4px 10px; background: #ffebee; color: #c62828; border: 1px solid #ffcdd2; border-radius: 4px; cursor: pointer; font-size: 11px; display: none;"
-        title="Excluir categoria selecionada">🗑️ Excluir Categoria</button>
+    <div class="list-header">
+      <h3 class="section-title">Minhas Respostas</h3>
+      <button type="button" id="btnDeleteCategory" class="btn-danger-outline is-hidden"
+        title="Excluir categoria selecionada">Excluir categoria</button>
     </div>
     <div id="repliesList"></div>
   </div>
 
+  <script src="browser-api.js"></script>
+  <script src="config.js"></script>
   <script src="popup.js"></script>
 </body>
 

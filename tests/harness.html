@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+  <meta charset="UTF-8">
+  <title>Harness — Study Quest Extension</title>
+  <link rel="stylesheet" href="/ext/styles.css">
+  <style>
+    body {
+      margin: 0;
+      font-family: sans-serif;
+    }
+
+    /* Reproduz a caixa do editor de nota do Zoho, ancorada onde o teste pedir. */
+    crux-note-editor {
+      position: absolute;
+      display: block;
+      border: 1px solid #ccc;
+      padding: 8px;
+      background: #fff;
+    }
+
+    .cxNotesFooterLeft {
+      display: flex;
+      align-items: center;
+      min-height: 32px;
+    }
+  </style>
+</head>
+
+<body>
+  <!-- Posicao definida pelo teste, para simular o botao em cada canto da tela. -->
+  <crux-note-editor id="editor">
+    <input class="cxNoteTitleInputElem" type="text">
+    <div class="lyteEditorMainDiv" contenteditable="true"></div>
+    <div class="cxNotesFooterLeft"></div>
+  </crux-note-editor>
+
+  <script>
+    // Respostas de teste: uma delas com texto longo e sem espacos, que e o
+    // caso que estourava a largura do card antes do overflow-wrap.
+    const FAKE_REPLIES = [
+      { id: '1', title: 'Lead Handover', text: 'Hello, thanks for reaching out.', category: 'Client Engagement', author: 'Carina' },
+      { id: '2', title: 'Attempt to Contact', text: 'Outbound Call, left a message', category: 'Sales', author: 'Sistema' },
+      { id: '3', title: 'Titulo'.repeat(12), text: 'X'.repeat(400), category: 'Admissions', author: 'Teste' },
+      { id: '4', title: 'Offer Letter', text: 'Linha 1\nLinha 2\nLinha 3', category: 'Admissions', author: 'Mauro' },
+      { id: '5', title: 'Visa Guidance', text: 'Please send your passport copy.', category: 'Preparation', author: 'Sistema' }
+    ];
+
+    // Intercepta a chamada de rede: o teste valida layout, nao a API.
+    window.fetch = function (url) {
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(FAKE_REPLIES),
+        text: () => Promise.resolve(JSON.stringify(FAKE_REPLIES))
+      });
+    };
+
+    window.__sqReplies = FAKE_REPLIES;
+  </script>
+
+  <script src="/ext/browser-api.js"></script>
+  <script src="/ext/config.js"></script>
+  <script src="/ext/content.js"></script>
+</body>
+
+</html>

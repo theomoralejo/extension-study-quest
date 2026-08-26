@@ -1,8 +1,10 @@
 :root {
-  --sq-primary: #0067A6; /* Azul escuro principal */
-  --sq-primary-dark: #004773; 
-  --sq-accent: #F28D19; /* Laranja de destaque */
-  --sq-accent-dark: #E95320; 
+  --sq-primary: #0067A6;
+  /* Azul escuro principal */
+  --sq-primary-dark: #004773;
+  --sq-accent: #F28D19;
+  /* Laranja de destaque */
+  --sq-accent-dark: #E95320;
   --sq-bg: #f5f6fa;
   --sq-surface: #ffffff;
   --sq-text-main: #333333;
@@ -12,26 +14,34 @@
   --sq-error-bg: #f8d7da;
   --sq-success: #28a745;
   --sq-success-bg: #d4edda;
-  
+
   --radius-sm: 6px;
   --radius-md: 8px;
-  --shadow-sm: 0 1px 4px rgba(0,0,0,.08);
-  --shadow-md: 0 4px 12px rgba(0,0,0,.08);
+  --shadow-sm: 0 1px 4px rgba(0, 0, 0, .08);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, .08);
 }
 
-* { 
-  box-sizing: border-box; 
-  margin: 0; 
-  padding: 0; 
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
 }
 
+/*
+ * O popup e dimensionado pelo navegador a partir do conteudo. `min()` mantem
+ * os 400px confortaveis no desktop mas cede quando a viewport e menor — que e
+ * o caso do popup em tela estreita e do Safari no iOS, onde ele ocupa a tela
+ * inteira. Sem isso o conteudo estoura e a barra horizontal aparece.
+ */
 body {
-  width: 400px;
+  width: min(400px, 100vw);
+  min-width: 300px;
   min-height: 250px;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   font-size: 14px;
   color: var(--sq-text-main);
   background: var(--sq-bg);
+  overflow-x: hidden;
 }
 
 header {
@@ -43,16 +53,17 @@ header {
   display: flex;
   align-items: center;
   gap: 10px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 header img.logo {
   height: 24px;
   width: auto;
+  flex-shrink: 0;
 }
 
-.container { 
-  padding: 20px; 
+.container {
+  padding: 20px;
 }
 
 .alert {
@@ -61,45 +72,125 @@ header img.logo {
   margin-bottom: 16px;
   font-size: 13px;
   font-weight: 500;
-}
-.alert.hidden { display: none; }
-.alert-success { background: var(--sq-success-bg); color: #155724; border-left: 4px solid var(--sq-success); }
-.alert-error   { background: var(--sq-error-bg); color: #721c24; border-left: 4px solid var(--sq-error); }
-
-form { 
-  background: var(--sq-surface); 
-  border-radius: var(--radius-md); 
-  padding: 16px; 
-  margin-bottom: 20px; 
-  box-shadow: var(--shadow-sm); 
+  overflow-wrap: anywhere;
 }
 
-label { 
-  display: block; 
-  font-size: 13px; 
-  font-weight: 600; 
-  color: var(--sq-text-main); 
-  margin-bottom: 6px; 
+.alert.hidden {
+  display: none;
 }
 
-input[type="text"], textarea {
+.alert-success {
+  background: var(--sq-success-bg);
+  color: #155724;
+  border-left: 4px solid var(--sq-success);
+}
+
+.alert-error {
+  background: var(--sq-error-bg);
+  color: #721c24;
+  border-left: 4px solid var(--sq-error);
+}
+
+form {
+  background: var(--sq-surface);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  margin-bottom: 20px;
+  box-shadow: var(--shadow-sm);
+}
+
+.form-group {
+  margin-bottom: 14px;
+}
+
+label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--sq-text-main);
+  margin-bottom: 6px;
+}
+
+input[type="text"],
+textarea,
+select,
+.field {
   width: 100%;
+  min-width: 0;
+  /* permite encolher dentro do flex row sem estourar */
   padding: 10px 12px;
   border: 1px solid var(--sq-border);
   border-radius: var(--radius-sm);
   font-size: 13px;
   font-family: inherit;
-  margin-bottom: 14px;
-  transition: all .2s ease;
+  background: var(--sq-surface);
+  color: var(--sq-text-main);
+  transition: border-color .2s ease, box-shadow .2s ease;
 }
-input[type="text"]:focus, textarea:focus { 
-  outline: none; 
-  border-color: var(--sq-primary); 
+
+input[type="text"]:focus,
+textarea:focus,
+select:focus,
+.field:focus {
+  outline: none;
+  border-color: var(--sq-primary);
   box-shadow: 0 0 0 3px rgba(0, 103, 166, 0.15);
 }
-textarea { 
-  resize: vertical; 
-  min-height: 80px; 
+
+/* Foco visivel por teclado tambem nos botoes (a11y). */
+button:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--sq-primary);
+  outline-offset: 2px;
+}
+
+textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+
+/* Linha de campo + botao: o campo estica, o botao mantem seu tamanho. */
+.input-row {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.input-row.is-hidden {
+  display: none;
+}
+
+.input-row .field {
+  flex: 1 1 auto;
+}
+
+.btn-icon {
+  flex: 0 0 auto;
+  padding: 0 15px;
+  min-width: 44px;
+  /* alvo de toque confortavel */
+  background: #e0e0e0;
+  color: #333;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-weight: bold;
+  font-size: 15px;
+  font-family: inherit;
+  transition: background 0.2s;
+}
+
+.btn-icon:hover {
+  background: #d5d5d5;
+}
+
+.btn-icon-danger {
+  background: var(--sq-error-bg);
+  color: #c62828;
+}
+
+.btn-icon-danger:hover {
+  background: #ffd9dd;
 }
 
 button[type="submit"] {
@@ -111,34 +202,70 @@ button[type="submit"] {
   border-radius: var(--radius-sm);
   font-size: 14px;
   font-weight: 600;
+  font-family: inherit;
   cursor: pointer;
   transition: transform .1s, opacity .2s, box-shadow .2s;
   box-shadow: 0 4px 6px rgba(242, 141, 25, 0.2);
 }
-button[type="submit"]:hover { 
-  opacity: .95; 
+
+button[type="submit"]:hover {
+  opacity: .95;
   transform: translateY(-1px);
   box-shadow: 0 6px 8px rgba(242, 141, 25, 0.3);
 }
+
 button[type="submit"]:active {
   transform: translateY(1px);
   box-shadow: 0 2px 4px rgba(242, 141, 25, 0.2);
+}
+
+button[type="submit"][disabled] {
+  opacity: .6;
+  cursor: progress;
+  transform: none;
 }
 
 .section-title {
   font-size: 14px;
   font-weight: 600;
   color: var(--sq-primary-dark);
-  margin-bottom: 12px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
+  margin: 0;
 }
 
-#repliesList { 
-  display: flex; 
-  flex-direction: column; 
-  gap: 12px; 
+/* Cabecalho da lista: quebra em duas linhas quando nao couber lado a lado. */
+.list-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 24px;
+  margin-bottom: 12px;
+}
+
+.btn-danger-outline {
+  padding: 6px 10px;
+  background: var(--sq-error-bg);
+  color: #c62828;
+  border: 1px solid #ffcdd2;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 11px;
+  font-family: inherit;
+}
+
+.btn-danger-outline:hover {
+  background: #ffd9dd;
+}
+
+.btn-danger-outline.is-hidden {
+  display: none;
+}
+
+#repliesList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .reply-item {
@@ -149,34 +276,53 @@ button[type="submit"]:active {
   box-shadow: var(--shadow-sm);
   transition: transform .2s ease, box-shadow .2s ease;
 }
+
 .reply-item:hover {
   transform: translateY(-2px);
   box-shadow: var(--shadow-md);
 }
 
-.reply-header {
+.reply-title {
   display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 6px;
-}
-
-.reply-title { 
-  font-weight: 600; 
-  font-size: 14px; 
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  font-size: 14px;
   color: var(--sq-primary-dark);
+  /* titulo longo sem espaco nao pode empurrar a largura do card */
+  overflow-wrap: anywhere;
 }
 
-.reply-text  { 
-  font-size: 13px; 
-  color: var(--sq-text-muted); 
-  line-height: 1.5; 
-  margin-bottom: 12px; 
+.reply-badge {
+  font-size: 11px;
+  background: #eee;
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: #555;
+  font-weight: normal;
 }
 
-.reply-actions { 
-  display: flex; 
-  gap: 8px; 
+.reply-text {
+  font-size: 13px;
+  color: var(--sq-text-muted);
+  line-height: 1.5;
+  margin: 6px 0 8px;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.reply-author {
+  font-size: 11px;
+  color: #888;
+  margin-bottom: 8px;
+  overflow-wrap: anywhere;
+}
+
+.reply-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
   justify-content: flex-end;
 }
 
@@ -188,30 +334,49 @@ button[type="submit"]:active {
   font-weight: 500;
   cursor: pointer;
   font-family: inherit;
-  transition: all .2s;
-}
-.btn-edit { 
-  background: #f0f2f5; 
-  color: var(--sq-text-main); 
-}
-.btn-edit:hover { 
-  background: #e4e6e9; 
-}
-.btn-delete { 
-  background: transparent; 
-  color: var(--sq-error); 
-  border: 1px solid var(--sq-error-bg);
-}
-.btn-delete:hover { 
-  background: var(--sq-error-bg); 
+  transition: background .2s;
 }
 
-.empty-state { 
-  text-align: center; 
-  padding: 40px 20px; 
-  color: var(--sq-text-muted); 
-  font-size: 14px; 
-  background: var(--sq-surface); 
-  border-radius: var(--radius-md); 
+.btn-edit {
+  background: #f0f2f5;
+  color: var(--sq-text-main);
+}
+
+.btn-edit:hover {
+  background: #e4e6e9;
+}
+
+.btn-delete {
+  background: transparent;
+  color: var(--sq-error);
+  border: 1px solid var(--sq-error-bg);
+}
+
+.btn-delete:hover {
+  background: var(--sq-error-bg);
+}
+
+.empty-state {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--sq-text-muted);
+  font-size: 14px;
+  background: var(--sq-surface);
+  border-radius: var(--radius-md);
   border: 1px dashed var(--sq-border);
+}
+
+/* Respeita quem pediu menos animacao no sistema (a11y). */
+@media (prefers-reduced-motion: reduce) {
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: .01ms !important;
+    transition-duration: .01ms !important;
+  }
+
+  .reply-item:hover {
+    transform: none;
+  }
 }
