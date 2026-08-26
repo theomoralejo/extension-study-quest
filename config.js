@@ -10,7 +10,15 @@
 (function () {
     'use strict';
 
-    var API_BASE = 'https://cv.studyquestuk.com/api';
+    // Precisa ser o dominio FINAL, nunca um que redirecione.
+    //
+    // `cv.studyquestuk.com` responde 301 para `cv.attriostudio.com`. Como as
+    // chamadas mandam o header `x-api-key`, elas deixam de ser "simple
+    // requests" e o browser faz um preflight OPTIONS antes — e a spec do Fetch
+    // trata redirect NA RESPOSTA DE PREFLIGHT como erro fatal: o browser nao
+    // segue, aborta, e o content script recebe apenas "Failed to fetch".
+    // Por isso o `curl` funciona (segue o 301 alegremente) e a extensao nao.
+    var API_BASE = 'https://cv.attriostudio.com/api';
     var API_KEY = 'sq-54321-secret-key';
 
     globalThis.SQConfig = {

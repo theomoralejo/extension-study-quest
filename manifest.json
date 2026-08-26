@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Study Quest Extension",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Adicione respostas rápidas às notas do Zoho CRM",
   "browser_specific_settings": {
     "gecko": {
@@ -28,6 +28,7 @@
   "host_permissions": [
     "https://*.zoho.com/*",
     "https://*.zoho.eu/*",
+    "https://cv.attriostudio.com/*",
     "https://cv.studyquestuk.com/*"
   ],
   "action": {

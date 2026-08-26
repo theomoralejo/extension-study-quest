@@ -184,8 +184,10 @@
             return 'O servidor falhou ao ' + acao + ' (' + detail + '). Tente de novo em alguns minutos.';
         }
         if (!status) {
+            // Sem status = o browser barrou antes da resposta (rede ou CORS).
             return 'Não foi possível ' + acao + ': sem conexão com o servidor (' + detail +
-                '). Verifique a internet e se a extensão tem permissão para cv.studyquestuk.com.';
+                '). Confira a internet; se persistir, veja se ' + CFG.API_BASE +
+                ' responde sem redirecionar (redirect quebra o CORS da extensão).';
         }
         return 'Não foi possível ' + acao + ': ' + detail;
     }

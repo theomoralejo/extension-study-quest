@@ -412,8 +412,13 @@
         if (msg.indexOf('HTTP') === 0) {
             return 'O servidor respondeu ' + msg + '. Tente recarregar a página do CRM.';
         }
+        // "Failed to fetch" / "NetworkError" e o que o browser devolve quando
+        // o CORS barra a chamada — inclusive quando a API responde redirect no
+        // preflight. Nao ha detalhe no objeto de erro, entao a mensagem aponta
+        // onde olhar em vez de dizer so "falha de rede".
         return 'Não foi possível falar com o servidor de respostas (' +
-            (msg || 'falha de rede') + '). Verifique a conexão e se a extensão tem permissão para cv.studyquestuk.com.';
+            (msg || 'falha de rede') + '). Confira a conexão; se persistir, veja se ' +
+            CFG.API_BASE + ' responde sem redirecionar (redirect quebra o CORS da extensão).';
     }
 
     function showListError(message) {
