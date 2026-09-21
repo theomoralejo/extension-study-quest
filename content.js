@@ -52,6 +52,7 @@
                 checkForNoteEditor();
                 checkForPhoneNumbers();
                 checkForInputs();
+                tickFieldHistory();
             }, 300);
         });
 
@@ -60,11 +61,17 @@
             subtree: true
         });
 
+        // O historico de campo depende da URL do registro, que ja existe no
+        // primeiro paint: varrer agora evita esperar os 2s abaixo (ou a
+        // proxima mutacao) para o icone aparecer.
+        tickFieldHistory();
+
         // Verificar inicialmente
         setTimeout(function () {
             checkForNoteEditor();
             checkForPhoneNumbers();
             checkForInputs();
+            tickFieldHistory();
 
             // Buscar na inicialização e setar a flag
             cacheZohoAuthorName();
@@ -985,10 +992,34 @@
         document.body.removeChild(textArea);
     }
 
-    // Escutar pedidos do Popup (ex.: nome do usuario logado no Zoho)
+    /**
+     * Dispara a varredura do historico de campo, se o modulo estiver carregado.
+     * Envolvido em try/catch porque uma falha dele nao pode derrubar as quick
+     * replies — sao features independentes no mesmo content script.
+     */
+    function tickFieldHistory() {
+        try {
+            if (globalThis.SQFieldHistory) globalThis.SQFieldHistory.tick();
+        } catch (err) {
+            console.error('Study Quest: historico de campo falhou nesta varredura', err);
+        }
+    }
+
+    // DESPACHANTE UNICO de mensagens do popup.
+    //
+    // Nao registre um segundo `onMessage` em outro arquivo: em MV3, o PRIMEIRO
+    // listener que chama `sendResponse` vence, e o nosso responde `undefined`
+    // a toda mensagem desconhecida — ele engoliria a resposta do outro. Feature
+    // nova que precisa falar com o popup entra como mais um `if` aqui.
     SQ.onMessage(function (request) {
-        if (request && request.action === 'getAuthor') {
+        if (!request) return undefined;
+        if (request.action === 'getAuthor') {
             return { author: getZohoAuthor() };
+        }
+        if (request.action === 'fieldHistoryStatus') {
+            return globalThis.SQFieldHistory
+                ? globalThis.SQFieldHistory.status()
+                : { page: null, labels: 0, icons: 0, apiError: null, scraped: 0 };
         }
         return undefined;
     });

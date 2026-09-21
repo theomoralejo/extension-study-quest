@@ -26,10 +26,12 @@ FILES=(
   browser-api.js
   config.js
   content.js
+  field-history.js
   popup.html
   popup.css
   popup.js
   styles.css
+  field-history.css
 )
 DIRS=(
   icons

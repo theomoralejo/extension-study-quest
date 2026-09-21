@@ -380,3 +380,28 @@ button[type="submit"][disabled] {
     transform: none;
   }
 }
+
+/* Bloco de diagnostico do historico de campo (so aparece em Deal/Lead). */
+.field-history {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--sq-border);
+}
+
+.field-history-status {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--sq-text-muted);
+  overflow-wrap: anywhere;
+}
+
+.field-history-status.field-history-error {
+  color: var(--sq-error);
+}
+
+/* `.is-hidden` so existia acoplado a `.input-row` e `.btn-danger-outline`;
+   sem esta regra o bloco acima nasceria visivel e vazio fora de Deal/Lead. */
+.field-history.is-hidden {
+  display: none;
+}

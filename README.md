@@ -1,7 +1,8 @@
 # Study Quest Extension
 
-Extensão de navegador que adiciona respostas rápidas às notas do Zoho CRM, botão de
-WhatsApp nos telefones e botão de copiar nos campos de valor.
+Extensão de navegador que adiciona ao Zoho CRM: respostas rápidas nas notas, botão de
+WhatsApp nos telefones, botão de copiar nos campos de valor e **histórico de alteração
+de cada campo** (ícone de relógio ao lado do nome do campo, em Deal e Lead).
 
 **Status:** roda em Chrome, Edge, Firefox e Safari (macOS).
 As respostas ficam numa API própria (`cv.studyquestuk.com/api`), não no storage do navegador.
@@ -47,6 +48,13 @@ npm run setup   # instala playwright + os três navegadores (uma vez)
 npm test
 ```
 
+- `test-unificacao.mjs` — **roda em Node puro, sem navegador e sem `setup`**
+  (`node tests/test-unificacao.mjs`). Prova que histórico de campo e quick
+  replies convivem num content script só: um único listener de mensagem, o
+  despachante respondendo as duas features e ignorando o resto, a ordem de
+  carga do manifest, e zero colisão de classe CSS. Sabe reprovar: com um
+  segundo `onMessage` injetado no `content.js`, falha com "encontrados 2".
+
 - `test-painel.mjs` — injeta o painel num DOM que imita o Zoho e verifica, em
   6 posições de tela (quatro cantos, janela estreita, janela baixa), que o
   painel **fica dentro da viewport** e que nenhum card estoura a largura.
@@ -65,13 +73,38 @@ do código, dão 0/18 no painel (ele saía da tela em 5 das 6 posições).
 manifest.json      MV3, com as chaves de Firefox e Safari
 browser-api.js     camada de compatibilidade entre chrome.* e browser.*
 config.js          fonte única da URL da API e dos headers
-content.js         injeta painel, botão de WhatsApp e botão de copiar no CRM
-popup.html/css/js  gestão das respostas rápidas
+field-history.js   histórico de alteração de campo (Deal e Lead)
+content.js         injeta painel, WhatsApp, copiar; e é o dono do observer e do despachante
+popup.html/css/js  gestão das respostas rápidas + diagnóstico do histórico
 styles.css         estilos do que é injetado na página do CRM
+field-history.css  estilos do histórico (prefixo .zfh-*)
 backend-api/       API Node/Express + MySQL (NÃO vai no pacote da extensão)
 scripts/build.sh   empacotamento por navegador
-tests/             testes cross-browser
+tests/             testes cross-browser + teste de unificação
 ```
+
+### Histórico de campo (`field-history.js`)
+
+Veio da extensão separada **Zoho CRM Field History 3.4.0**, do Mauro, e foi
+incorporada aqui em vez de conviver como um segundo add-on. Três adaptações
+foram obrigatórias — nenhuma é cosmética, e cada uma corresponde a uma falha
+**silenciosa** se for desfeita:
+
+| O que mudou | Se voltar ao original |
+|---|---|
+| `chrome.storage.*` → `SQBrowser` | funciona em Chrome/Edge e morre em Firefox e Safari, que esta extensão suporta |
+| MutationObserver próprio removido; quem chama é o observer único do `content.js` | dois observers varrendo `document.body` inteiro em paralelo, na página mais pesada do CRM |
+| `chrome.runtime.onMessage` próprio removido; há **um** despachante no `content.js` | em MV3 vence o primeiro listener que chama `sendResponse` — o nosso responde `undefined` a mensagem desconhecida e engoliria a resposta do outro |
+
+A leitura usa a **sessão do Zoho já aberta na aba** (cookie CSRF + endpoint
+interno `/crm/v8/...`, não a API pública com OAuth). É o que faz a feature
+funcionar sem credencial nenhuma — e também o que a torna sensível a mudança
+do Zoho: se a chamada passar a ser recusada, o módulo cai sozinho para ler a
+aba Timeline na tela. O popup diz em qual dos dois caminhos ele está.
+
+Regra para a próxima feature: **não registre um segundo `onMessage`.** Entra
+como mais um `if` no despachante do `content.js`, e o `test-unificacao.mjs`
+reprova se alguém esquecer.
 
 ### `browser-api.js`
 

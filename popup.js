@@ -32,6 +32,8 @@
             });
         });
 
+        showFieldHistoryStatus();
+
         // Alternar entre escolher categoria existente e criar uma nova
         var btnNew = document.getElementById('btnNewCategory');
         var btnCancel = document.getElementById('btnCancelCategory');
@@ -408,5 +410,41 @@
         alertTimer = setTimeout(function () {
             alertDiv.classList.add('hidden');
         }, type === 'error' ? 8000 : 3000);
+    }
+
+    /**
+     * Diagnostico do historico de campo: so aparece quando a aba ativa e um
+     * Deal ou Lead do Zoho. Em qualquer outra tela o bloco fica escondido —
+     * secao vazia num popup de gestao de respostas so confunde.
+     *
+     * Texto sempre por `textContent`: o conteudo vem do content script (nome do
+     * campo, mensagem de erro do Zoho) e nao pode virar HTML dentro do popup.
+     */
+    function showFieldHistoryStatus() {
+        var box = document.getElementById('fieldHistory');
+        var line = document.getElementById('fieldHistoryStatus');
+        if (!box || !line) return;
+
+        SQ.activeTab().then(function (tab) {
+            if (!tab || !tab.url || tab.url.indexOf('zoho') === -1) return null;
+            return SQ.sendMessageToTab(tab.id, { action: 'fieldHistoryStatus' });
+        }).then(function (s) {
+            if (!s || !s.page) return;
+            var texto;
+            if (s.apiError) {
+                texto = 'Registro ' + s.page + '. O Zoho recusou a leitura direta ('
+                    + s.apiError + '), entao estou usando a aba Timeline — '
+                    + s.scraped + ' alteracoes lidas ate agora.';
+            } else if (!s.icons) {
+                texto = 'Registro ' + s.page + ', mas nenhum icone de relogio foi colocado ainda. '
+                    + 'Atualize a pagina; se continuar em zero, me mande um print desta caixa.';
+            } else {
+                texto = 'Registro ' + s.page + ' — ' + s.icons
+                    + (s.icons === 1 ? ' icone de relogio na tela.' : ' icones de relogio na tela.');
+            }
+            line.textContent = texto;
+            line.classList.toggle('field-history-error', !!s.apiError || !s.icons);
+            box.classList.remove('is-hidden');
+        });
     }
 })();
