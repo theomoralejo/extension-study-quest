@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Medicao — laco entre addIcons e o observer</title>
+<style>
+  body { font: 13px/1.6 ui-monospace, monospace; margin: 24px; max-width: 1000px; }
+  h1 { font-size: 16px; }
+  h2 { font-size: 14px; margin-top: 22px; }
+  #saida { white-space: pre-wrap; }
+  .ruim { color: #b00; font-weight: bold; }
+  .ok { color: #070; font-weight: bold; }
+  #palco { display: none; }
+</style>
+</head>
+<body>
+<h1>O <code>tick()</code> e idempotente num DOM estavel? E o observer se sustenta sozinho?</h1>
+<p>Duas perguntas, medidas separadamente:</p>
+<ol>
+  <li><strong>Idempotencia:</strong> com o DOM PARADO, o segundo <code>tick()</code> ainda insere
+      icone? Se sim, cada tick vira uma mutacao, que agenda outro tick — laco.</li>
+  <li><strong>Sustentacao:</strong> com o observer real do <code>content.js</code> ligado
+      (childList+subtree em <code>body</code>, 300 ms), UMA insercao de nota provoca quantos
+      ticks? Se nao parar, e o travamento.</li>
+</ol>
+<div id="saida">medindo…</div>
+<div id="palco"></div>
+
+<script>
+(function () {
+  var caixa = {};
+  globalThis.SQBrowser = {
+    storageGet: function (k) {
+      var ks = Array.isArray(k) ? k : [k];
+      var out = {};
+      ks.forEach(function (n) { if (n in caixa) out[n] = caixa[n]; });
+      return Promise.resolve(out);
+    },
+    storageSet: function (o) { Object.assign(caixa, o); return Promise.resolve(); }
+  };
+})();
+
+var CAMPOS = ['Deal Name','Stage','Amount','Closing Date','Account Name','Contact Name',
+  'Lead Source','Owner','Probability','Next Step','Type','Campaign Source','Description',
+  'English Pipeline','Intake','Course','University','Nationality','Passport','Visa Status'];
+
+function montarRegistro() {
+  var palco = document.getElementById('palco');
+  palco.textContent = '';
+
+  // painel de detalhes: rotulo de campo em elemento proprio (onde o icone entra)
+  var box = document.createElement('div');
+  box.className = 'dv_info';
+  CAMPOS.forEach(function (nome) {
+    var linha = document.createElement('div');
+    var rot = document.createElement('div');
+    rot.className = 'dv_info_label';
+    rot.textContent = nome;
+    var val = document.createElement('div');
+    val.className = 'dv_info_value_field';
+    val.textContent = 'valor de exemplo';
+    linha.append(rot, val);
+    box.append(linha);
+  });
+  palco.append(box);
+
+  // Timeline, que e de onde os rotulos sao raspados
+  var tl = document.createElement('div');
+  tl.className = 'timeline';
+  for (var i = 0; i < 40; i++) {
+    var campo = CAMPOS[i % CAMPOS.length];
+    var linha2 = document.createElement('div');
+    var a = document.createElement('div');
+    var c = document.createElement('span');
+    c.textContent = campo + ' was updated from Waiting for documents to Scheduled';
+    a.append(c);
+    var b = document.createElement('div');
+    b.textContent = 'by Carina Casalecchi Pereira 11/09/2026';
+    var hora = document.createElement('span');
+    hora.textContent = '13:0' + (i % 10);
+    linha2.append(a, b, hora);
+    tl.append(linha2);
+  }
+  palco.append(tl);
+
+  // editor de nota, como o harness.html modela
+  var ed = document.createElement('crux-note-editor');
+  ed.id = 'editor';
+  var titulo = document.createElement('input');
+  titulo.className = 'cxNoteTitleInputElem';
+  titulo.type = 'text';
+  var corpo = document.createElement('div');
+  corpo.className = 'lyteEditorMainDiv';
+  corpo.setAttribute('contenteditable', 'true');
+  var rodape = document.createElement('div');
+  rodape.className = 'cxNotesFooterLeft';
+  ed.append(titulo, corpo, rodape);
+  palco.append(ed);
+
+  return { editor: ed, corpo: corpo };
+}
+
+function carregarModulo() {
+  return new Promise(function (ok, erro) {
+    var s = document.createElement('script');
+    s.src = '/field-history.js';
+    s.onload = ok;
+    s.onerror = function () { erro(new Error('field-history.js nao carregou')); };
+    document.head.append(s);
+  });
+}
+
+var espera = function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
+var linhas = [];
+var diz = function (s, cls) { linhas.push(cls ? '<span class="' + cls + '">' + s + '</span>' : s); pintar(); };
+var pintar = function () { document.getElementById('saida').innerHTML = linhas.join('\n'); };
+
+async function medir() {
+  await carregarModulo();
+  var FH = globalThis.SQFieldHistory;
+  if (!FH) { diz('ERRO: SQFieldHistory nao existe'); document.title = 'ERRO'; return; }
+
+  var palco = montarRegistro();
+
+  // ---------- Pergunta 1: idempotencia com DOM parado ----------
+  diz('<strong>1) Idempotencia — DOM parado, 6 ticks seguidos</strong>');
+  FH.tick();
+  await espera(300);            // deixa a raspagem assincrona terminar
+  var antes = FH.status().icons;
+  var serie = [];
+  for (var i = 0; i < 6; i++) {
+    var a0 = FH.status().icons;
+    FH.tick();
+    await espera(120);
+    serie.push(FH.status().icons - a0);
+  }
+  diz('   icones apos o tick frio: ' + antes);
+  diz('   icones NOVOS por tick:   ' + serie.join(', '));
+  var somaDepois = serie.reduce(function (x, y) { return x + y; }, 0);
+  if (somaDepois === 0) {
+    diz('   → IDEMPOTENTE: tick em DOM parado nao insere nada, logo nao gera mutacao.', 'ok');
+  } else {
+    diz('   → NAO IDEMPOTENTE: cada tick insere ' + (somaDepois / 6).toFixed(1) +
+        ' icone(s) em media. Cada insercao e uma mutacao, que agenda o proximo tick: LACO.', 'ruim');
+  }
+  diz('   total de elementos com data-zfh: ' + document.querySelectorAll('[data-zfh]').length);
+  diz('   total de .zfh-icon no DOM:       ' + document.querySelectorAll('.zfh-icon').length);
+
+  // ---------- Pergunta 2: observer real + uma insercao de nota ----------
+  diz('\n<strong>2) Sustentacao — observer real do content.js + UMA insercao</strong>');
+  var ticks = 0, lotes = 0, msTotal = 0, pico = 0;
+  var timer = null;
+  // Copia fiel do content.js:43-88: childList+subtree em body, debounce 300ms.
+  var obs = new MutationObserver(function () {
+    lotes++;
+    clearTimeout(timer);
+    timer = setTimeout(function () {
+      ticks++;
+      var t = performance.now();
+      try { FH.tick(); } catch (e) {}
+      var d = performance.now() - t;
+      msTotal += d;
+      if (d > pico) pico = d;
+    }, 300);
+  });
+  obs.observe(document.body, { childList: true, subtree: true });
+
+  // A insercao, exatamente como insertTextAtCaret faz: fragmento com <br> e
+  // texto, dentro do contenteditable, + o evento `input` sintetico.
+  palco.corpo.focus();
+  var sel = window.getSelection();
+  var range = document.createRange();
+  range.selectNodeContents(palco.corpo);
+  range.collapse(false);
+  sel.removeAllRanges();
+  sel.addRange(range);
+  var frag = document.createDocumentFragment();
+  'Ola,\n\nSegue o documento solicitado.\n\nAtenciosamente'.split('\n').forEach(function (l, i) {
+    if (i > 0) frag.append(document.createElement('br'));
+    frag.append(document.createTextNode(l));
+  });
+  range.insertNode(frag);
+  palco.corpo.dispatchEvent(new Event('input', { bubbles: true }));
+
+  // 8 segundos de observacao: se o laco existe, os ticks nao param.
+  var marcos = [];
+  for (var s = 1; s <= 8; s++) {
+    await espera(1000);
+    marcos.push(s + 's: ' + ticks + ' ticks, ' + lotes + ' lotes, ' + msTotal.toFixed(0) + ' ms');
+  }
+  marcos.forEach(function (m) { diz('   ' + m); });
+  diz('   pior tick: ' + pico.toFixed(0) + ' ms · icones acumulados: ' + FH.status().icons);
+  obs.disconnect();
+
+  var ultimos2 = ticks;
+  if (ticks <= 2) {
+    diz('   → ASSENTA: a insercao provoca ' + ticks + ' tick(s) e para.', 'ok');
+  } else {
+    diz('   → NAO PARA: ' + ticks + ' ticks em 8 s, ' + msTotal.toFixed(0) +
+        ' ms de thread principal queimados. E esse o travamento.', 'ruim');
+  }
+
+  document.title = 'PRONTO — idem=' + somaDepois + ' ticks=' + ultimos2;
+}
+
+medir().catch(function (e) {
+  diz('ERRO: ' + e.message + '\n' + e.stack);
+  document.title = 'ERRO';
+});
+</script>
+</body>
+</html>

@@ -6,10 +6,11 @@
   "type": "module",
   "scripts": {
     "setup": "npm install && npx playwright install firefox webkit chromium",
-    "test": "node test-unificacao.mjs && node test-painel.mjs && node test-popup.mjs && node test-api-cors.mjs",
+    "test": "node test-unificacao.mjs && node test-painel.mjs && node test-insercao.mjs && node test-popup.mjs && node test-api-cors.mjs",
+    "test:api": "node test-api-cors.mjs",
+    "test:insercao": "node test-insercao.mjs",
     "test:painel": "node test-painel.mjs",
     "test:popup": "node test-popup.mjs",
-    "test:api": "node test-api-cors.mjs",
     "test:unificacao": "node test-unificacao.mjs"
   },
   "devDependencies": {

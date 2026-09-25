@@ -559,9 +559,12 @@
             return;
         }
 
-        var editable = bodyEditor.getAttribute('contenteditable')
-            ? bodyEditor
-            : (bodyEditor.querySelector('[contenteditable="true"]') || bodyEditor);
+        var editable = resolveEditable(bodyEditor);
+
+        if (!editable) {
+            showNotification('O corpo da nota ainda nao aceita texto. Clique dentro dele e tente de novo.', 'error');
+            return;
+        }
 
         editable.focus();
 
@@ -582,6 +585,29 @@
     }
 
     /**
+     * O no que de fato aceita texto dentro do corpo da nota, ou `null`.
+     *
+     * Nunca devolve um no NAO editavel. O codigo anterior decidia por
+     * `bodyEditor.getAttribute('contenteditable')`, e `getAttribute` devolve
+     * STRING: no editor real do Zoho o `.lyteEditorMainDiv` e um involucro com
+     * `contenteditable="false"`, e a string "false" e verdadeira. O involucro
+     * passava por editavel e o `range.insertNode` escrevia nos crus dentro do
+     * subtree gerenciado pelo Lyte, fora do campo que edita — o texto nao
+     * aparecia e o editor ficava com DOM estranho no meio.
+     *
+     * `isContentEditable` e a propriedade viva: ja resolve "", "true",
+     * "plaintext-only" e heranca, e e falsa para "false".
+     */
+    function resolveEditable(bodyEditor) {
+        if (bodyEditor.isContentEditable) return bodyEditor;
+        var candidates = bodyEditor.querySelectorAll('[contenteditable]');
+        for (var i = 0; i < candidates.length; i++) {
+            if (candidates[i].isContentEditable) return candidates[i];
+        }
+        return null;
+    }
+
+    /**
      * Insere texto no cursor de um contenteditable.
      *
      * `execCommand` e obsoleto e cada navegador o trata de um jeito, entao ele
@@ -590,6 +616,11 @@
      * sintetico no fim e o que faz o editor do Zoho perceber a mudanca.
      */
     function insertTextAtCaret(editable, text) {
+        // Segunda tranca, na propria funcao que escreve: `insertNode` num no nao
+        // editavel nao insere nota nenhuma — suja o DOM de quem gerencia aquele
+        // subtree. Quem chama ja resolve o no certo, mas a garantia mora aqui.
+        if (!editable || !editable.isContentEditable) return false;
+
         var before = editable.textContent;
 
         try {

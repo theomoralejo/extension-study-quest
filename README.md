@@ -58,6 +58,16 @@ npm test
 - `test-painel.mjs` — injeta o painel num DOM que imita o Zoho e verifica, em
   6 posições de tela (quatro cantos, janela estreita, janela baixa), que o
   painel **fica dentro da viewport** e que nenhum card estoura a largura.
+- `test-insercao.mjs` — clica numa resposta e confere **onde o texto foi
+  escrito**. Roda as duas formas do editor de nota: a *plana*, em que o próprio
+  `.lyteEditorMainDiv` é `contenteditable="true"` (a que o `harness.html` já
+  modelava), e a de *invólucro*, em que ele é `contenteditable="false"` e quem
+  aceita texto é um filho — que é a forma do Zoho real e a que ninguém testava.
+  Exige que o texto chegue inteiro ao nó que edita e que **nada** seja escrito em
+  nó não editável. Sabe reprovar: com o `getAttribute('contenteditable')` de
+  volta, a forma de invólucro dá 4 falhas (o texto vai para o invólucro e o campo
+  fica vazio) — e a forma plana continua passando, que é exatamente por que o
+  defeito sobrevivia à suíte.
 - `test-popup.mjs` — carrega `popup.html` **sem `chrome`/`browser` definidos**,
   provando que a camada de compatibilidade degrada em vez de lançar, e checa
   que nada estoura a largura em 320/390/400px.

@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Medicao — custo do tick() do field-history</title>
+<style>
+  body { font: 14px/1.5 ui-monospace, monospace; margin: 24px; max-width: 900px; }
+  h1 { font-size: 16px; }
+  table { border-collapse: collapse; margin: 12px 0; }
+  th, td { border: 1px solid #ccc; padding: 4px 10px; text-align: right; }
+  th:first-child, td:first-child { text-align: left; }
+  #saida { white-space: pre-wrap; }
+  .ruim { color: #b00; font-weight: bold; }
+  #palco { display: none; }
+</style>
+</head>
+<body>
+<h1>Custo do <code>SQFieldHistory.tick()</code> em funcao do tamanho da pagina</h1>
+<p>Pergunta que esta medicao responde: <strong>quantos milissegundos de thread principal
+custa UM tick</strong>, e como isso cresce com o numero de elementos da pagina.
+Nao mede o navegador do Theo; mede o codigo do repo sob um DOM sintetico.</p>
+<div id="saida">medindo…</div>
+
+<!-- O palco fica escondido para o custo ser do codigo, nao do layout/paint. -->
+<div id="palco"></div>
+
+<script>
+// ---------- Dublês do ambiente da extensao ----------
+// storage em memoria: a medicao e do custo de DOM, nao do storage.
+(function () {
+  var caixa = {};
+  globalThis.SQBrowser = {
+    storageGet: function (k) {
+      var ks = Array.isArray(k) ? k : [k];
+      var out = {};
+      ks.forEach(function (n) { if (n in caixa) out[n] = caixa[n]; });
+      return Promise.resolve(out);
+    },
+    storageSet: function (o) { Object.assign(caixa, o); return Promise.resolve(); }
+  };
+  // O Zoho recusa a chamada (o servidor devolve 403 em /crm/v*), entao o modulo
+  // cai na raspagem da Timeline. E esse o caminho caro e o que roda de verdade.
+})();
+
+// ---------- DOM sintetico parecido com o registro do Zoho ----------
+var CAMPOS = ['Deal Name','Stage','Amount','Closing Date','Account Name','Contact Name',
+  'Lead Source','Owner','Probability','Next Step','Type','Campaign Source','Description',
+  'English Pipeline','Intake','Course','University','Nationality','Passport','Visa Status',
+  'Agent','Commission','Deposit Paid','Tuition','Accommodation','Guardian','Phone','Email'];
+
+function entradaTimeline(i) {
+  var campo = CAMPOS[i % CAMPOS.length];
+  var linha = document.createElement('div');
+  var a = document.createElement('div');
+  var b = document.createElement('div');
+  var c = document.createElement('span');
+  c.textContent = campo + ' was updated from Waiting for documents to Scheduled';
+  a.append(c);
+  b.textContent = 'by Carina Casalecchi Pereira 11/09/2026';
+  var hora = document.createElement('span');
+  hora.textContent = '13:0' + (i % 10);
+  linha.append(a, b, hora);
+  return linha;
+}
+
+function painelCampos() {
+  var box = document.createElement('div');
+  box.className = 'dv_info';
+  CAMPOS.forEach(function (nome) {
+    var linha = document.createElement('div');
+    var rot = document.createElement('div');
+    rot.className = 'dv_info_label';
+    rot.textContent = nome;
+    var val = document.createElement('div');
+    val.className = 'dv_info_value_field';
+    val.textContent = 'valor de exemplo';
+    linha.append(rot, val);
+    box.append(linha);
+  });
+  return box;
+}
+
+/** Enche a pagina ate ~`alvo` elementos, com profundidade parecida com um SPA. */
+function encher(palco, alvo) {
+  var feitos = palco.querySelectorAll('*').length;
+  var no = palco;
+  var prof = 0;
+  while (feitos < alvo) {
+    var d = document.createElement('div');
+    d.className = 'lyte-wrap nivel-' + prof;
+    d.append(document.createTextNode(''));
+    no.append(d);
+    feitos++;
+    prof++;
+    if (prof % 8 === 0) { no = palco; prof = 0; } else { no = d; }
+  }
+}
+
+function montar(alvo, entradas) {
+  var palco = document.getElementById('palco');
+  palco.textContent = '';
+  palco.append(painelCampos());
+  var tl = document.createElement('div');
+  tl.className = 'timeline';
+  for (var i = 0; i < entradas; i++) tl.append(entradaTimeline(i));
+  palco.append(tl);
+  encher(palco, alvo);
+  return document.querySelectorAll('*').length;
+}
+
+// ---------- Execucao ----------
+function carregarModulo() {
+  return new Promise(function (ok, erro) {
+    var s = document.createElement('script');
+    s.src = '/field-history.js';
+    s.onload = ok;
+    s.onerror = function () { erro(new Error('field-history.js nao carregou')); };
+    document.head.append(s);
+  });
+}
+
+var espera = function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
+
+async function medir() {
+  var out = document.getElementById('saida');
+  await carregarModulo();
+  if (!globalThis.SQFieldHistory) { out.textContent = 'ERRO: SQFieldHistory nao existe'; return; }
+
+  var TAMANHOS = [1000, 2000, 4000, 8000];
+  var ENTRADAS = 60;
+  var linhas = [];
+
+  for (var i = 0; i < TAMANHOS.length; i++) {
+    var elementos = montar(TAMANHOS[i], ENTRADAS);
+
+    // tick frio: descobre a URL e dispara a raspagem (que e assincrona)
+    var t0 = performance.now();
+    globalThis.SQFieldHistory.tick();
+    var frio = performance.now() - t0;
+
+    // deixa a ida ao storage terminar: dai em diante `labels` esta cheio e o
+    // tick passa a ser o caso quente — que e o que roda enquanto o usuario digita
+    await espera(150);
+
+    var quentes = [];
+    for (var k = 0; k < 3; k++) {
+      var t1 = performance.now();
+      globalThis.SQFieldHistory.tick();
+      quentes.push(performance.now() - t1);
+      await espera(50);
+    }
+
+    var st = globalThis.SQFieldHistory.status();
+    linhas.push({
+      elementos: elementos,
+      frio: frio,
+      quente: Math.max.apply(null, quentes),
+      quentes: quentes.map(function (n) { return n.toFixed(0); }).join(' / '),
+      rotulos: st.labels,
+      icones: st.icons,
+      raspadas: st.scraped
+    });
+  }
+
+  var t = ['<table><tr><th>elementos</th><th>tick frio (ms)</th><th>tick quente, 3x (ms)</th>' +
+           '<th>pior quente</th><th>rotulos</th><th>icones</th><th>raspadas</th></tr>'];
+  linhas.forEach(function (l) {
+    var mau = l.quente > 100 ? ' class="ruim"' : '';
+    t.push('<tr><td>' + l.elementos + '</td><td>' + l.frio.toFixed(0) + '</td><td>' + l.quentes +
+           '</td><td' + mau + '>' + l.quente.toFixed(0) + '</td><td>' + l.rotulos + '</td><td>' +
+           l.icones + '</td><td>' + l.raspadas + '</td></tr>');
+  });
+  t.push('</table>');
+
+  // crescimento: se dobrar os elementos mais que dobra o tempo, e superlinear
+  var cresc = [];
+  for (var j = 1; j < linhas.length; j++) {
+    var fe = linhas[j].elementos / linhas[j - 1].elementos;
+    var ft = linhas[j].quente / (linhas[j - 1].quente || 0.001);
+    cresc.push(linhas[j - 1].elementos + '→' + linhas[j].elementos +
+      ': elementos ×' + fe.toFixed(1) + ', tempo ×' + ft.toFixed(1));
+  }
+  t.push('<p><strong>Crescimento (tick quente):</strong><br>' + cresc.join('<br>') + '</p>');
+  out.innerHTML = t.join('');
+  globalThis.__medicao = linhas;
+  document.title = 'PRONTO — ' + linhas.map(function (l) { return l.quente.toFixed(0); }).join('/');
+}
+
+medir().catch(function (e) {
+  document.getElementById('saida').textContent = 'ERRO: ' + e.message + '\n' + e.stack;
+  document.title = 'ERRO';
+});
+</script>
+</body>
+</html>

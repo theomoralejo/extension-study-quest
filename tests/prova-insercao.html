@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>aguardando</title>
+  <link rel="stylesheet" href="/ext/styles.css">
+  <style>
+    body { margin: 0; font: 13px/1.6 ui-monospace, monospace; }
+    crux-note-editor { position: absolute; top: 260px; left: 40px; display: block;
+      border: 1px solid #ccc; padding: 8px; background: #fff; width: 520px; }
+    .lyteEditorMainDiv { border: 1px dashed #bbb; padding: 6px; min-height: 60px; }
+    .lyteEditorContent { min-height: 44px; outline: 1px dotted #ddd; }
+    .cxNotesFooterLeft { display: flex; align-items: center; min-height: 32px; }
+    #placar { padding: 16px; max-width: 800px; white-space: pre-wrap; }
+    .ruim { color: #b00; font-weight: bold; }
+    .ok { color: #070; font-weight: bold; }
+  </style>
+</head>
+
+<body>
+  <div id="placar">rodando...</div>
+
+  <!--
+    A FORMA QUE O harness.html NAO MODELA.
+
+    No `harness.html` o `.lyteEditorMainDiv` e ele mesmo `contenteditable="true"`
+    — o caminho felizeis. No editor de nota real do Zoho (Lyte) ele e um
+    INVOLUCRO, normalmente `contenteditable="false"`, e quem aceita texto e um
+    filho. Enquanto o teste so cobrir a forma de cima, nenhum teste pega o
+    defeito de `getAttribute('contenteditable')`, que devolve a STRING "false" —
+    e "false" e verdadeira.
+
+    `?forma=plana` remonta o editor na forma do harness: as DUAS formas existem
+    no Zoho, entao as duas passam pelas mesmas assercoes (§4).
+  -->
+  <crux-note-editor id="editor">
+    <input class="cxNoteTitleInputElem" type="text">
+    <div class="lyteEditorMainDiv" contenteditable="false">
+      <div class="lyteEditorContent" contenteditable="true"></div>
+    </div>
+    <div class="cxNotesFooterLeft"></div>
+  </crux-note-editor>
+
+  <script>
+    var FAKE_REPLIES = [
+      { id: '1', title: 'Lead Handover', text: 'Hello, thanks for reaching out.', category: 'Client Engagement', author: 'Carina' },
+      { id: '4', title: 'Offer Letter', text: 'Linha 1\nLinha 2\nLinha 3', category: 'Admissions', author: 'Mauro' }
+    ];
+    window.fetch = function () {
+      return Promise.resolve({
+        ok: true, status: 200,
+        json: function () { return Promise.resolve(FAKE_REPLIES); },
+        text: function () { return Promise.resolve(JSON.stringify(FAKE_REPLIES)); }
+      });
+    };
+    window.__sqReplies = FAKE_REPLIES;
+
+    if (new URLSearchParams(location.search).get('forma') === 'plana') {
+      var invol0 = document.querySelector('.lyteEditorMainDiv');
+      invol0.setAttribute('contenteditable', 'true');
+      window.__formaPlana = true;
+    }
+  </script>
+
+  <script src="/ext/browser-api.js"></script>
+  <script src="/ext/config.js"></script>
+  <script src="/ext/content.js"></script>
+
+  <script>
+    var espera = function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
+
+    async function ate(fn, limite) {
+      var t0 = Date.now();
+      while (Date.now() - t0 < (limite || 12000)) {
+        var v = fn();
+        if (v) return v;
+        await espera(100);
+      }
+      return null;
+    }
+
+    /** Texto que e filho DIRETO do no — descendente nao conta. */
+    function textoProprio(no) {
+      return [].slice.call(no.childNodes)
+        .filter(function (n) { return n.nodeType === 3; })
+        .map(function (n) { return n.nodeValue; }).join('');
+    }
+
+    var limpa = function (s) { return s.replace(/ /g, ' ').trim(); };
+
+    async function provar() {
+      var falhas = [];
+      var linhas = [];
+
+      var invol = document.querySelector('.lyteEditorMainDiv');
+      var dentro = document.querySelector('.lyteEditorContent');
+      var plana = !!window.__formaPlana;
+
+      // Quem DEVE receber o texto, e quem nao pode receber nada.
+      var destino = plana ? invol : dentro;
+      var proibidos = plana ? [] : [invol];
+
+      linhas.push('forma do editor: ' + (plana
+        ? 'plana (.lyteEditorMainDiv editavel — a do harness.html)'
+        : 'involucro (.lyteEditorMainDiv NAO editavel — a do Zoho real)'));
+
+      if (!destino.isContentEditable) falhas.push('cenario invalido: o destino nao esta editavel');
+      proibidos.forEach(function (p) {
+        if (p.isContentEditable) falhas.push('cenario invalido: um no proibido esta editavel');
+      });
+
+      var btn = await ate(function () { return document.querySelector('.quick-replies-btn'); });
+      if (!btn) { concluir(['nao injetou o botao de respostas'], linhas); return; }
+      btn.click();
+
+      var item = await ate(function () { return document.querySelector('.quick-reply-item'); });
+      if (!item) { concluir(['o painel nao renderizou nenhuma resposta'], linhas); return; }
+
+      // a resposta multi-linha, que exercita tambem o caminho das quebras
+      var itens = document.querySelectorAll('.quick-reply-item');
+      var alvo = itens[itens.length - 1];
+      var esperado = FAKE_REPLIES[FAKE_REPLIES.length - 1].text;
+      alvo.click();
+      await espera(700);
+
+      var noDestino = limpa(destino.textContent);
+      linhas.push('texto no destino editavel: ' + JSON.stringify(noDestino));
+      linhas.push('HTML no destino:           ' + JSON.stringify(destino.innerHTML.slice(0, 140)));
+
+      // 1. Nada pode ser escrito direto num no que NAO edita: aquele subtree e
+      //    gerenciado pelo Lyte, e escrever nele suja o editor em vez de inserir.
+      proibidos.forEach(function (p) {
+        var proprio = limpa(textoProprio(p));
+        var brs = [].slice.call(p.children).filter(function (c) { return c.tagName === 'BR'; }).length;
+        linhas.push('no proibido (.' + p.className + '): texto proprio ' +
+                    JSON.stringify(proprio) + ', ' + brs + ' <br> soltos');
+        if (proprio.length || brs) {
+          falhas.push('escreveu DENTRO de no nao editavel (' +
+            JSON.stringify(proprio.slice(0, 40)) + ', ' + brs + ' <br>)');
+        }
+      });
+
+      // 2. O texto tem que chegar INTEIRO ao no que edita: as tres linhas, uma a
+      //    uma, porque `textContent` nao separa blocos e uma perda passaria batida.
+      ['Linha 1', 'Linha 2', 'Linha 3'].forEach(function (parte) {
+        if (noDestino.indexOf(parte) === -1) {
+          falhas.push('o destino editavel nao recebeu ' + JSON.stringify(parte) +
+                      '; esperado o texto inteiro ' + JSON.stringify(esperado));
+        }
+      });
+
+      // 3. O titulo da nota tambem e preenchido pelo mesmo fluxo.
+      var titulo = document.querySelector('input.cxNoteTitleInputElem');
+      linhas.push('titulo da nota: ' + JSON.stringify(titulo.value));
+      if (titulo.value !== 'Offer Letter') {
+        falhas.push('o titulo da nota nao foi preenchido (valor: ' + JSON.stringify(titulo.value) + ')');
+      }
+
+      concluir(falhas, linhas);
+    }
+
+    function concluir(falhas, linhas) {
+      var out = document.getElementById('placar');
+      var html = ['Portao: insercao de resposta no editor de nota', ''];
+      linhas.forEach(function (l) { html.push('  ' + l); });
+      html.push('');
+      if (falhas.length) {
+        html.push('<span class="ruim">REPROVADO — ' + falhas.length + ' falha(s):</span>');
+        falhas.forEach(function (f) { html.push('<span class="ruim">  x ' + f + '</span>'); });
+      } else {
+        html.push('<span class="ok">APROVADO — o texto chegou inteiro ao no editavel e nada foi escrito em no nao editavel.</span>');
+      }
+      out.innerHTML = html.join('\n');
+      document.title = falhas.length ? 'REPROVADO:' + falhas.length : 'APROVADO';
+    }
+
+    provar().catch(function (e) {
+      document.getElementById('placar').textContent = 'ERRO: ' + e.message + '\n' + e.stack;
+      document.title = 'ERRO';
+    });
+  </script>
+</body>
+</html>
