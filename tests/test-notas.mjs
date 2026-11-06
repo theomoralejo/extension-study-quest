@@ -21,8 +21,8 @@ const cs = manifest.content_scripts[0];
 const scripts = cs.js.filter((f) => f !== "content.js").map((f) => `<script>${read(f)}</script>`).join("\n");
 const css = cs.css.map((f) => `<style>${read(f)}</style>`).join("\n");
 
-const html = `<!doctype html><html><head><meta charset="utf-8">${css}</head>
-<body style="margin:0"><div style="height:3000px">Deal</div>${scripts}</body></html>`;
+const html = `<!doctype html><html style="font-size:10px"><head><meta charset="utf-8">${css}</head>
+<body style="margin:0"><style>button,textarea{font-size:30px}</style><div style="height:3000px">Deal</div>${scripts}</body></html>`;
 
 const server = http.createServer((req, res) => {
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
@@ -87,6 +87,13 @@ const NOTAS = [
     ok(corpo.includes("Linha 1\nLinha 2") && !corpo.includes("<"), "HTML da nota vira texto com quebra de linha", JSON.stringify(corpo));
     await page.waitForTimeout(200);
     ok(!estado.xss && (await page.$$(".sqn-panel img")).length === 0, "HTML da nota nao executa nem injeta elemento");
+
+    // O Zoho tem raiz menor e estilo proprio em button/textarea: o painel nao pode herdar nada disso.
+    const fs = await page.evaluate(() => ["sqn-panel", "sqn-body", "sqn-input", "sqn-send"].map((c) => parseFloat(getComputedStyle(document.querySelector("." + c)).fontSize)));
+    ok(fs[0] === 16 && fs[1] === 16 && fs[2] === 16 && fs[3] === 15, "tamanho de fonte independe da raiz e do CSS do Zoho (16/16/16/15px)", fs.join("/"));
+    const tabR = await page.$eval(".sqn-tab", (e) => e.getBoundingClientRect().right);
+    const panL = await page.$eval(".sqn-panel", (e) => e.getBoundingClientRect().left);
+    ok(tabR <= panL + 1, "aba aberta fica encostada fora do painel, sem cobrir", `aba.right=${tabR} painel.left=${panL}`);
 
     // ---- gravar ----
     ok(await page.isDisabled(".sqn-send"), "botao desabilitado com campo vazio");
