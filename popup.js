@@ -425,10 +425,23 @@
         var line = document.getElementById('fieldHistoryStatus');
         if (!box || !line) return;
 
+        var isZohoCrm = false;
         SQ.activeTab().then(function (tab) {
             if (!tab || !tab.url || tab.url.indexOf('zoho') === -1) return null;
+            isZohoCrm = /\/crm\//.test(tab.url);
             return SQ.sendMessageToTab(tab.id, { action: 'fieldHistoryStatus' });
         }).then(function (s) {
+            // Aba do Zoho CRM sem resposta = a extensao nao esta rodando na pagina:
+            // sem bolinha de templates, sem aba Notas, sem relogio. O popup diz como resolver.
+            if (!s && isZohoCrm) {
+                line.textContent = 'A extensão não está rodando nesta aba do Zoho, por isso não aparecem '
+                    + 'a bolinha dos templates, a aba Notas e o relógio. Recarregue a página (F5). '
+                    + 'Se continuar: chrome://extensions → Study Quest Extension → Detalhes → '
+                    + 'Acesso ao site → "Em todos os sites", e recarregue o Zoho.';
+                line.classList.add('field-history-error');
+                box.classList.remove('is-hidden');
+                return;
+            }
             if (!s || !s.page) return;
             var texto;
             if (s.apiError) {
