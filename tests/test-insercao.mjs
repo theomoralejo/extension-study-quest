@@ -49,7 +49,8 @@ const ENGINES = [
 
 const FORMAS = [
   { nome: 'involucro (Zoho real)', query: '' },
-  { nome: 'plana (harness)      ', query: '?forma=plana' }
+  { nome: 'plana (harness)      ', query: '?forma=plana' },
+  { nome: 'lyte (Zoho nov/2026) ', query: '?forma=lyte' }
 ];
 
 let falhas = 0;

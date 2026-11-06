@@ -101,7 +101,9 @@
 
     function checkForNoteEditor() {
         // Procurar pelo editor de notas do Zoho
-        var noteEditors = document.querySelectorAll('crux-note-editor');
+        // Zoho trocou o editor (nov/2026): `lyte-note-editor` + `.lyteNoteFooterActions`.
+        // O formato antigo (`crux-note-editor` + `.cxNotesFooterLeft`) continua aceito.
+        var noteEditors = document.querySelectorAll('lyte-note-editor, crux-note-editor');
 
         noteEditors.forEach(function (editor) {
             // Verificar se já adicionamos o botão neste editor
@@ -110,7 +112,7 @@
             }
 
             // Procurar pela área de ferramentas do editor
-            var footerLeft = editor.querySelector('.cxNotesFooterLeft');
+            var footerLeft = editor.querySelector('.lyteNoteFooterActions, .cxNotesFooterLeft');
 
             if (footerLeft) {
                 addQuickRepliesButton(footerLeft, editor);
@@ -123,7 +125,7 @@
     function addQuickRepliesButton(footerLeft, editor) {
         // Criar botão de Quick Replies
         var button = document.createElement('span');
-        button.className = 'quick-replies-btn cxNotesFooterIcoWrap';
+        button.className = 'quick-replies-btn cxNotesFooterIcoWrap lyteNoteIconHolder';
         button.setAttribute('role', 'button');
         button.setAttribute('tabindex', '0');
         button.setAttribute('aria-haspopup', 'dialog');
@@ -548,7 +550,7 @@
         if (!currentEditor) return;
 
         // Preenche o campo de título da nota
-        var titleInput = currentEditor.querySelector('input.cxNoteTitleInputElem');
+        var titleInput = currentEditor.querySelector('input.cxNotesReactTitleInputElem, input.cxNoteTitleInputElem');
         if (titleInput) {
             titleInput.value = title;
             titleInput.dispatchEvent(new Event('input', { bubbles: true }));

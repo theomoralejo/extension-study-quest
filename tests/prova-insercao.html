@@ -55,6 +55,29 @@
     };
     window.__sqReplies = FAKE_REPLIES;
 
+    // `?forma=lyte`: o editor do Zoho desde nov/2026, montado pela estrutura lida na tela real
+    // (lyte-note-editor, .lyteNoteFooterActions, input.cxNotesReactTitleInputElem).
+    if (new URLSearchParams(location.search).get('forma') === 'lyte') {
+      var velho = document.getElementById('editor');
+      var novo = document.createElement('lyte-note-editor');
+      novo.id = 'editor';
+      novo.className = 'lyteNoteEditorActive';
+      novo.setAttribute('style', 'position:absolute;top:260px;left:40px;display:block;width:600px');
+      novo.innerHTML =
+        '<div class="lyteNoteEditorWrapper">' +
+        '  <div class="lyteNoteTitleYield"><lyte-input><div class="lyteField"><input class="cxNotesReactTitleInputElem" placeholder="Title" type="text"></div></lyte-input></div>' +
+        '  <div class="lyteNoteTextEditorWrapper"><lyte-texteditor>' +
+        '    <div class="lyteEditorContentEditable" contenteditable="true"></div>' +
+        '    <div class="lyteEditorMainDiv" contenteditable="true"><lyte-paragraph></lyte-paragraph></div>' +
+        '  </lyte-texteditor></div>' +
+        '  <div class="lyteNoteEditorFooter"><div class="lyteNoteFooterActions">' +
+        '    <div class="lyteNoteIconHolder" role="button"></div><div class="lyteNoteFileUpload" role="button"></div>' +
+        '  </div></div>' +
+        '</div>';
+      velho.parentNode.replaceChild(novo, velho);
+      window.__formaLyte = true;
+    }
+
     if (new URLSearchParams(location.search).get('forma') === 'plana') {
       var invol0 = document.querySelector('.lyteEditorMainDiv');
       invol0.setAttribute('contenteditable', 'true');
@@ -94,13 +117,13 @@
 
       var invol = document.querySelector('.lyteEditorMainDiv');
       var dentro = document.querySelector('.lyteEditorContent');
-      var plana = !!window.__formaPlana;
+      var plana = !!window.__formaPlana || !!window.__formaLyte;
 
       // Quem DEVE receber o texto, e quem nao pode receber nada.
       var destino = plana ? invol : dentro;
       var proibidos = plana ? [] : [invol];
 
-      linhas.push('forma do editor: ' + (plana
+      linhas.push('forma do editor: ' + (window.__formaLyte ? 'lyte (Zoho desde nov/2026)' : plana
         ? 'plana (.lyteEditorMainDiv editavel — a do harness.html)'
         : 'involucro (.lyteEditorMainDiv NAO editavel — a do Zoho real)'));
 
@@ -150,7 +173,7 @@
       });
 
       // 3. O titulo da nota tambem e preenchido pelo mesmo fluxo.
-      var titulo = document.querySelector('input.cxNoteTitleInputElem');
+      var titulo = document.querySelector('input.cxNotesReactTitleInputElem, input.cxNoteTitleInputElem');
       linhas.push('titulo da nota: ' + JSON.stringify(titulo.value));
       if (titulo.value !== 'Offer Letter') {
         falhas.push('o titulo da nota nao foi preenchido (valor: ' + JSON.stringify(titulo.value) + ')');
