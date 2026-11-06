@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Study Quest Extension",
-  "version": "1.5.2",
+  "version": "1.6.0",
   "description": "Respostas rapidas nas notas do Zoho CRM, painel lateral de notas, botao de WhatsApp, copiar campo e historico de alteracoes de campo em qualquer modulo",
   "browser_specific_settings": {
     "gecko": {

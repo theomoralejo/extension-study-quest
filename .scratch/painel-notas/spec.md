@@ -10,3 +10,10 @@ com todas as notas (mais nova no topo) e um campo que grava nota nova no registr
 ## Aceite pendente
 - Mauro abre um Deal, clica em "Notas", vê as notas e grava uma nota que aparece também na lista nativa do Zoho.
 - Conferir em Lead, Contact e um módulo custom.
+
+## 1.6.0 (2026-11-06)
+
+- Editar (PUT /Notes/{id}) e excluir (DELETE /Notes/{id}, com confirmação) no painel; só aparece quando `$editable` não é false.
+- "Compartilhar com o cliente" = `$is_shared_to_client` (Share to customer do Zoho).
+- Texto rico: barra igual à do Zoho; HTML passa por lista branca ao mostrar, colar e salvar. Sem formatação, sai texto puro como antes.
+- Lista nativa do Zoho não sabe da gravação pela API: aviso com "Recarregar página".

@@ -42,7 +42,7 @@ const browser = await pw.chromium.launch();
 
 async function abrir(notas, { postStatus = 201 } = {}) {
     const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
-    const estado = { notas: notas.slice(), posts: [], xss: false };
+    const estado = { notas: notas.slice(), posts: [], puts: [], dels: [], gets: [], xss: false };
     await page.exposeFunction("__xss", () => { estado.xss = true; });
     await page.route("**/crm/v8/**", async (route) => {
         const req = route.request();
@@ -50,7 +50,21 @@ async function abrir(notas, { postStatus = 201 } = {}) {
         if (url.pathname.endsWith("/settings/modules")) {
             return route.fulfill({ json: { modules: [{ api_name: "Deals", module_name: "Potentials" }] } });
         }
+        const um = url.pathname.match(/\/Notes\/(\w+)$/);
+        if (um && req.method() === "PUT") {
+            const body = JSON.parse(req.postData());
+            estado.puts.push({ id: um[1], body });
+            const n = estado.notas.find((x) => x.id === um[1]);
+            Object.assign(n, body.data[0]);
+            return route.fulfill({ json: { data: [{ code: "SUCCESS", details: { id: um[1] }, status: "success" }] } });
+        }
+        if (um && req.method() === "DELETE") {
+            estado.dels.push(um[1]);
+            estado.notas = estado.notas.filter((x) => x.id !== um[1]);
+            return route.fulfill({ json: { data: [{ code: "SUCCESS", details: { id: um[1] }, status: "success" }] } });
+        }
         if (url.pathname.endsWith("/Deals/123/Notes") && req.method() === "GET") {
+            estado.gets.push(url.searchParams.get("fields"));
             if (!estado.notas.length) return route.fulfill({ status: 204, body: "" });
             return route.fulfill({ json: { data: estado.notas, info: { more_records: false } } });
         }
@@ -58,7 +72,7 @@ async function abrir(notas, { postStatus = 201 } = {}) {
             const body = JSON.parse(req.postData());
             estado.posts.push(body);
             if (postStatus !== 201) return route.fulfill({ status: postStatus, json: { data: [{ code: "MANDATORY_NOT_FOUND", message: "required field not found", status: "error" }] } });
-            estado.notas.push({ id: "n9", Note_Content: body.data[0].Note_Content, Created_Time: "2026-11-06T16:00:00-03:00", Created_By: { name: "Mauro" } });
+            estado.notas.push({ id: "n" + estado.posts.length, Note_Content: body.data[0].Note_Content, Note_Title: body.data[0].Note_Title, $is_shared_to_client: !!body.data[0].$is_shared_to_client, Created_Time: "2026-11-06T16:0" + estado.posts.length + ":00-03:00", Created_By: { name: "Mauro" } });
             return route.fulfill({ status: 201, json: { data: [{ code: "SUCCESS", details: { id: "n9" }, status: "success" }] } });
         }
         return route.fulfill({ status: 404, json: {} });
@@ -83,8 +97,8 @@ const NOTAS = [
     const autores = await page.$$eval(".sqn-author", (els) => els.map((e) => e.textContent));
     ok(autores.join(",") === "Mauro,Ana", "mais nova no topo", autores.join(","));
     ok((await page.textContent(".sqn-count")) === "2 notas", "contador de notas");
-    const corpo = await page.textContent(".sqn-note .sqn-body");
-    ok(corpo.includes("Linha 1\nLinha 2") && !corpo.includes("<"), "HTML da nota vira texto com quebra de linha", JSON.stringify(corpo));
+    const corpo = await page.$eval(".sqn-note .sqn-body", (e) => e.innerText);
+    ok(corpo.includes("Linha 1\nLinha 2") && !corpo.includes("<"), "HTML da nota mostra a quebra de linha, sem tag aparecendo", JSON.stringify(corpo));
     await page.waitForTimeout(200);
     ok(!estado.xss && (await page.$$(".sqn-list img")).length === 0, "HTML da nota nao executa nem injeta elemento");
 
@@ -104,7 +118,10 @@ const NOTAS = [
     const p = estado.posts[0]?.data?.[0];
     ok(p && p.Note_Content === "Aluno confirmou janeiro" && p.Parent_Id?.id === "123" && p.Parent_Id?.module?.api_name === "Deals",
         "POST com Note_Content e Parent_Id {module.api_name: Deals, id}", JSON.stringify(estado.posts[0]));
-    ok((await page.inputValue(".sqn-input")) === "", "campo limpa depois de salvar");
+    ok((await page.textContent(".sqn-input")) === "", "campo limpa depois de salvar");
+    ok(await page.isVisible(".sqn-status") && (await page.textContent(".sqn-status")).includes("Recarregar página"),
+        "depois de salvar, aviso explica que a lista do Zoho na pagina so atualiza recarregando");
+    ok(estado.gets[0] && estado.gets[0].includes("$is_shared_to_client"), "GET pede $is_shared_to_client", estado.gets[0]);
     ok((await page.textContent(".sqn-note .sqn-body")) === "Aluno confirmou janeiro", "nota nova aparece no topo");
 
     // ---- dentro da tela ----
@@ -130,7 +147,7 @@ const NOTAS = [
     ok(await page.isVisible(".sqn-qr img"), "botao da Study Quest aparece no rodape do painel");
     await page.fill(".sqn-input", "Antes ");
     await page.click(".sqn-qr");
-    ok((await page.inputValue(".sqn-input")) === "Antes Oi! Faltam os documentos.", "template entra no campo, no cursor", await page.inputValue(".sqn-input"));
+    ok((await page.textContent(".sqn-input")) === "Antes Oi! Faltam os documentos.", "template entra no campo, no cursor", await page.textContent(".sqn-input"));
     ok((await page.inputValue(".sqn-title-input")) === "Cobro docs", "titulo do template preenche o campo Titulo");
     await page.click(".sqn-send");
     await page.waitForFunction(() => document.querySelectorAll(".sqn-note").length === 3);
@@ -142,6 +159,92 @@ const NOTAS = [
     await page.click(".sqn-send");
     await page.waitForFunction(() => document.querySelectorAll(".sqn-note").length === 4);
     ok(estado.posts[1]?.data?.[0]?.Note_Title === "Ligação", "titulo digitado vai como Note_Title", JSON.stringify(estado.posts[1]));
+    await page.close();
+}
+
+// ---- texto rico, compartilhar com o cliente, editar e excluir ----
+{
+    const RICAS = [
+        { id: "r1", Note_Title: "Rica", Note_Content: '<b>forte</b> <span style="color: rgb(233, 83, 32)">cor</span> <a href="javascript:__xss()">mau</a> <a href="https://studyquest.co.uk">bom</a><script>__xss()</script><ul><li>item</li></ul>', $is_shared_to_client: true, Created_Time: "2026-11-02T09:00:00-03:00", Created_By: { name: "Ana" } },
+        { id: "r2", Note_Content: "Sem permissao", $editable: false, Created_Time: "2026-11-01T09:00:00-03:00", Created_By: { name: "Carina" } }
+    ];
+    const { page, estado } = await abrir(RICAS);
+    await page.click(".sqn-tab");
+    await page.waitForSelector(".sqn-note");
+    const rica = page.locator(".sqn-note", { hasText: "Rica" });
+    ok(await rica.locator(".sqn-body b").count() === 1 && await rica.locator(".sqn-body li").count() === 1, "nota com formatacao aparece formatada (negrito, lista)");
+    ok((await rica.locator(".sqn-body span").getAttribute("style") || "").includes("color"), "cor do texto da nota e mantida");
+    const hrefs = await rica.locator(".sqn-body a").evaluateAll((as) => as.map((a) => a.getAttribute("href")));
+    ok(hrefs.join(",") === ",https://studyquest.co.uk" || (hrefs[0] === null && hrefs[1] === "https://studyquest.co.uk"), "link javascript: perde o href; https fica", JSON.stringify(hrefs));
+    await page.waitForTimeout(200);
+    ok(!estado.xss && await rica.locator("script").count() === 0, "script de nota nao entra nem executa");
+    ok(await rica.locator(".sqn-badge").isVisible(), "nota compartilhada mostra o selo 'Compartilhada com o cliente'");
+    const semPerm = page.locator(".sqn-note", { hasText: "Sem permissao" });
+    ok(await semPerm.locator("button").count() === 0, "nota com $editable false nao oferece Editar/Excluir");
+
+    // barra de formatacao no estilo do Zoho
+    const titulos = await page.$$eval(".sqn-toolbar .sqn-tool", (bs) => bs.map((b) => b.title));
+    const esperado = ["Negrito", "Itálico", "Sublinhado", "Tachado", "Cor do texto", "Cor de fundo", "Lista com marcadores", "Lista numerada", "Inserir link", "Aumentar recuo", "Diminuir recuo", "Subscrito", "Sobrescrito", "Emoji", "Limpar formatação"];
+    const faltam = esperado.filter((t) => !titulos.some((x) => x.startsWith(t)));
+    ok(!faltam.length, "barra tem as 15 ferramentas do editor do Zoho", "faltam: " + faltam.join(", "));
+
+    // negrito vai como HTML; compartilhar vai como $is_shared_to_client
+    await page.click(".sqn-input");
+    await page.keyboard.type("normal ");
+    await page.click('.sqn-tool[title^="Negrito"]');
+    ok((await page.getAttribute('.sqn-tool[title^="Negrito"]', "aria-pressed")) === "true", "botao Negrito fica marcado enquanto ativo");
+    await page.keyboard.type("forte");
+    await page.check(".sqn-share input");
+    await page.click(".sqn-send");
+    await page.waitForFunction(() => document.querySelectorAll(".sqn-note").length === 3);
+    const p = estado.posts[0]?.data?.[0] || {};
+    ok(/<b>forte<\/b>/.test(p.Note_Content || ""), "texto em negrito sai como HTML no Note_Content", p.Note_Content);
+    ok(p.$is_shared_to_client === true, "marcar 'Compartilhar com o cliente' envia $is_shared_to_client true", JSON.stringify(p));
+    ok(!(await page.isChecked(".sqn-share input")), "caixa de compartilhar desmarca depois de salvar");
+
+    // texto sem formatacao continua saindo como texto puro
+    await page.click(".sqn-input");
+    await page.keyboard.type("linha 1");
+    await page.keyboard.press("Enter");
+    await page.keyboard.type("linha 2");
+    await page.click(".sqn-send");
+    await page.waitForFunction(() => document.querySelectorAll(".sqn-note").length === 4);
+    const p2 = estado.posts[1]?.data?.[0] || {};
+    ok(p2.Note_Content === "linha 1\nlinha 2" && !("$is_shared_to_client" in p2), "texto sem formatacao sai puro, com quebra de linha, sem compartilhar", JSON.stringify(p2));
+
+    // editar
+    await rica.locator("button", { hasText: "Editar" }).click();
+    ok((await page.inputValue(".sqn-title-input")) === "Rica" && (await page.textContent(".sqn-send")) === "Salvar alteração", "Editar carrega titulo e texto no editor");
+    ok(await page.isChecked(".sqn-share input"), "Editar traz o estado de compartilhamento da nota");
+    ok(await page.$$eval(".sqn-input script, .sqn-input img", (x) => x.length) === 0, "editor recebe a nota ja limpa");
+    await page.fill(".sqn-title-input", "Rica editada");
+    await page.uncheck(".sqn-share input");
+    await page.click(".sqn-send");
+    await page.waitForFunction(() => document.querySelector(".sqn-send").textContent === "Adicionar nota" && !document.querySelector(".sqn-send").dataset.busy?.includes("1"));
+    const put = estado.puts[0];
+    ok(put && put.id === "r1" && put.body.data[0].Note_Title === "Rica editada" && put.body.data[0].$is_shared_to_client === false,
+        "Salvar alteracao faz PUT /Notes/{id} com titulo e compartilhamento novos", JSON.stringify(put));
+    await page.waitForSelector(".sqn-note >> text=Rica editada");
+    ok(true, "nota editada aparece na lista");
+
+    // cancelar edicao devolve o rascunho
+    await page.click(".sqn-input");
+    await page.keyboard.type("rascunho");
+    await page.locator(".sqn-note", { hasText: "Rica editada" }).locator("button", { hasText: "Editar" }).click();
+    await page.click(".sqn-editbar button");
+    ok((await page.textContent(".sqn-input")) === "rascunho", "Cancelar edicao devolve o rascunho que estava no campo", await page.textContent(".sqn-input"));
+
+    // excluir com confirmacao
+    const alvo = page.locator(".sqn-note", { hasText: "Rica editada" });
+    await alvo.locator("button", { hasText: "Excluir" }).click();
+    ok((await alvo.locator(".sqn-confirm-text").textContent()).includes("Rica editada"), "confirmacao de excluir diz qual nota some");
+    ok(!estado.dels.length, "nada e excluido antes de confirmar");
+    await alvo.locator("button", { hasText: "Cancelar" }).click();
+    ok(!estado.dels.length && await alvo.locator("button", { hasText: "Editar" }).count() === 1, "Cancelar desiste sem excluir");
+    await alvo.locator("button", { hasText: "Excluir" }).click();
+    await alvo.locator("button", { hasText: "Excluir nota" }).click();
+    await page.waitForFunction(() => !document.body.textContent.includes("Rica editada") || document.querySelectorAll(".sqn-note").length === 3);
+    ok(estado.dels.join() === "r1", "Excluir nota faz DELETE /Notes/{id}", estado.dels.join());
     await page.close();
 }
 
@@ -162,7 +265,7 @@ const NOTAS = [
     await page.fill(".sqn-input", "Texto que nao pode sumir");
     await page.click(".sqn-send");
     await page.waitForSelector(".sqn-error-inline:not([hidden])");
-    ok((await page.inputValue(".sqn-input")) === "Texto que nao pode sumir", "texto fica no campo quando o Zoho recusa");
+    ok((await page.textContent(".sqn-input")) === "Texto que nao pode sumir", "texto fica no campo quando o Zoho recusa");
     ok((await page.textContent(".sqn-error-inline")).includes("required field not found"), "erro mostra a causa que o Zoho deu");
     await page.close();
 }

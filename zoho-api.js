@@ -4,7 +4,7 @@
  * Fonte unica para o historico de campo e o painel de notas: cookie de CSRF,
  * org da URL e a versao da API (descoberta uma vez, de v8 para tras).
  *
- * Expoe `globalThis.SQZoho = { get, post, recordFromUrl, module }`.
+ * Expoe `globalThis.SQZoho = { get, post, put, del, recordFromUrl, module }`.
  */
 (function () {
     'use strict';
@@ -38,14 +38,14 @@
     }
 
     /**
-     * POST so na versao ja descoberta por um GET. Tentar varias versoes num
-     * POST poderia gravar duas vezes, se uma aceitar e responder erro.
+     * Gravacao (POST/PUT/DELETE) so na versao ja descoberta por um GET. Tentar
+     * varias versoes poderia gravar duas vezes, se uma aceitar e responder erro.
      */
-    async function post(path, body) {
+    async function write(method, path, body) {
         var v = apiVersion || VERSIONS[0];
-        var res = await fetch("/crm/" + v + path, {
-            method: "POST", headers: headers(true), credentials: "include", body: JSON.stringify(body)
-        });
+        var opts = { method: method, headers: headers(body !== undefined), credentials: "include" };
+        if (body !== undefined) opts.body = JSON.stringify(body);
+        var res = await fetch("/crm/" + v + path, opts);
         var json = null;
         try { json = await res.json(); } catch (e) { json = null; }
         if (!res.ok) {
@@ -53,8 +53,13 @@
             var msg = (d && d.message) || (json && json.message) || ("HTTP " + res.status);
             throw new Error("Zoho recusou a gravacao: " + msg);
         }
+        var d0 = json && json.data && json.data[0];
+        if (d0 && d0.code && d0.code !== "SUCCESS") throw new Error("Zoho recusou a gravacao: " + (d0.message || d0.code));
         return json || {};
     }
+    function post(path, body) { return write("POST", path, body); }
+    function put(path, body) { return write("PUT", path, body); }
+    function del(path) { return write("DELETE", path); }
 
     /** Registro aberto na aba: { tab, id } ou null fora de pagina de registro. */
     function recordFromUrl() {
@@ -83,5 +88,5 @@
         return modules[tab] || { api: tab, label: tab };
     }
 
-    globalThis.SQZoho = { get: get, post: post, recordFromUrl: recordFromUrl, module: module };
+    globalThis.SQZoho = { get: get, post: post, put: put, del: del, recordFromUrl: recordFromUrl, module: module };
 })();
