@@ -81,6 +81,13 @@ const cs = manifest.content_scripts[0];
 ok(cs.js.indexOf("field-history.js") < cs.js.indexOf("content.js"),
     "field-history.js carrega antes de content.js no manifest",
     `ordem atual: ${cs.js.join(", ")}`);
+for (const dep of ["zoho-api.js", "notes-panel.js"]) {
+    ok(cs.js.indexOf(dep) > -1 && cs.js.indexOf(dep) < cs.js.indexOf("content.js"),
+        `${dep} carrega antes de content.js no manifest`, `ordem atual: ${cs.js.join(", ")}`);
+}
+ok(cs.js.indexOf("zoho-api.js") < cs.js.indexOf("field-history.js"),
+    "zoho-api.js carrega antes de field-history.js (que usa SQZoho)", `ordem atual: ${cs.js.join(", ")}`);
+
 
 for (const f of cs.js) {
     try {
@@ -117,12 +124,17 @@ ok(nada === undefined, "mensagem desconhecida nao recebe resposta inventada", JS
 ok(sandbox.SQFieldHistory && typeof sandbox.SQFieldHistory.tick === "function",
     "SQFieldHistory.tick() existe para o observer unico chamar");
 
-// ---- 4. nenhuma classe CSS compartilhada entre os dois arquivos ----
+ok(sandbox.SQNotesPanel && typeof sandbox.SQNotesPanel.tick === "function",
+    "SQNotesPanel.tick() existe para o observer unico chamar");
+
+// ---- 4. nenhuma classe CSS compartilhada entre os arquivos de estilo ----
 const classes = (f) => new Set((read(f).match(/\.[a-zA-Z][\w-]*/g) || []));
-const nossas = classes("styles.css"), historico = classes("field-history.css");
-const colisao = [...historico].filter((c) => nossas.has(c));
-ok(colisao.length === 0, "nenhuma classe CSS colide entre styles.css e field-history.css",
-    colisao.join(", "));
+const folhas = cs.css;
+for (let i = 0; i < folhas.length; i++) for (let j = i + 1; j < folhas.length; j++) {
+    const a = classes(folhas[i]), b = classes(folhas[j]);
+    const colisao = [...b].filter((c) => a.has(c));
+    ok(colisao.length === 0, `nenhuma classe CSS colide entre ${folhas[i]} e ${folhas[j]}`, colisao.join(", "));
+}
 
 console.log(falhas ? `\n${falhas} falha(s)` : "\nTudo passou");
 process.exit(falhas ? 1 : 0);

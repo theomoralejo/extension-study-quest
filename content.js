@@ -53,6 +53,7 @@
                 checkForPhoneNumbers();
                 checkForInputs();
                 tickFieldHistory();
+                tickNotesPanel();
             }, 300);
         });
 
@@ -1033,6 +1034,15 @@
             if (globalThis.SQFieldHistory) globalThis.SQFieldHistory.tick();
         } catch (err) {
             console.error('Study Quest: historico de campo falhou nesta varredura', err);
+        }
+    }
+
+    /** Painel de notas: isolado para uma falha nele nao derrubar o resto da varredura. */
+    function tickNotesPanel() {
+        try {
+            if (globalThis.SQNotesPanel) globalThis.SQNotesPanel.tick();
+        } catch (err) {
+            console.error('Study Quest: painel de notas falhou nesta varredura', err);
         }
     }
 
