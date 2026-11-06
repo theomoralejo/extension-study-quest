@@ -23,6 +23,7 @@
     var tab = null, panel = null, listEl = null, countEl = null, input = null, sendBtn = null, errEl = null;
     var loadSeq = 0;
     var drafts = {};       // rascunho por registro: trocar de registro nao leva o texto junto
+    var titleChip = null, noteTitle = ""; // titulo vindo de um template, enviado como Note_Title
 
     function el(tag, cls, text) {
         var n = document.createElement(tag);
@@ -94,13 +95,34 @@
             if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); send(); }
         });
         var row = el("div", "sqn-compose-row");
-        row.appendChild(el("span", "sqn-hint", "Ctrl/⌘ + Enter envia"));
+        var left = el("div", "sqn-compose-left");
+        var qr = el("button", "sqn-qr");
+        qr.type = "button";
+        qr.title = "Templates (respostas rápidas)";
+        qr.setAttribute("aria-label", "Inserir template");
+        qr.setAttribute("aria-haspopup", "dialog");
+        var qrImg = el("img");
+        qrImg.src = globalThis.SQBrowser.getURL("icons/icon16.png");
+        qrImg.alt = "";
+        qr.appendChild(qrImg);
+        qr.addEventListener("click", function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            if (!globalThis.SQQuickReplies) return;
+            globalThis.SQQuickReplies.toggle(qr, insertTemplate);
+        });
+        left.appendChild(qr);
+        left.appendChild(el("span", "sqn-hint", "Ctrl/⌘ + Enter envia"));
+        row.appendChild(left);
         sendBtn = el("button", "sqn-send", "Adicionar nota");
         sendBtn.type = "submit";
         row.appendChild(sendBtn);
         errEl = el("div", "sqn-error-inline");
         errEl.setAttribute("role", "alert");
         errEl.hidden = true;
+        titleChip = el("div", "sqn-title-chip");
+        titleChip.hidden = true;
+        form.appendChild(titleChip);
         form.appendChild(input);
         form.appendChild(errEl);
         form.appendChild(row);
@@ -116,6 +138,33 @@
         document.addEventListener("keydown", function (e) {
             if (e.key === "Escape" && isOpen && panel.contains(document.activeElement)) setOpen(false);
         });
+    }
+
+    /** Template escolhido: texto entra onde esta o cursor; o titulo vira o titulo da nota. */
+    function insertTemplate(title, text) {
+        var start = input.selectionStart != null ? input.selectionStart : input.value.length;
+        var end = input.selectionEnd != null ? input.selectionEnd : start;
+        input.value = input.value.slice(0, start) + text + input.value.slice(end);
+        var caret = start + text.length;
+        input.focus();
+        input.setSelectionRange(caret, caret);
+        setTitle(title || "");
+        syncSend();
+    }
+
+    function setTitle(title) {
+        noteTitle = title;
+        titleChip.textContent = "";
+        titleChip.hidden = !title;
+        if (!title) return;
+        titleChip.appendChild(el("span", "sqn-title-label", "Título: "));
+        titleChip.appendChild(el("span", "sqn-title-text", title));
+        var x = el("button", "sqn-title-remove", "✕");
+        x.type = "button";
+        x.title = "Remover título";
+        x.setAttribute("aria-label", "Remover título da nota");
+        x.addEventListener("click", function () { setTitle(""); input.focus(); });
+        titleChip.appendChild(x);
     }
 
     function syncSend() {
@@ -203,15 +252,18 @@
         syncSend();
         try {
             current.module = await resolveModule(current.tab);
+            var note = {
+                Note_Content: text,
+                Parent_Id: { module: { api_name: current.module }, id: current.id }
+            };
+            if (noteTitle) note.Note_Title = noteTitle;
             var res = await globalThis.SQZoho.post("/" + current.module + "/" + current.id + "/Notes", {
-                data: [{
-                    Note_Content: text,
-                    Parent_Id: { module: { api_name: current.module }, id: current.id }
-                }]
+                data: [note]
             });
             var d = res.data && res.data[0];
             if (!d || d.code !== "SUCCESS") throw new Error((d && d.message) || "resposta inesperada do Zoho");
             input.value = "";
+            setTitle("");
             delete drafts[current.id];
             await load();
         } catch (e) {
@@ -241,6 +293,7 @@
         current = { tab: rec.tab, module: null, id: rec.id };
         if (!tab) build();
         input.value = drafts[rec.id] || "";
+        setTitle("");
         syncSend();
         tab.hidden = false;
         errEl.hidden = true;

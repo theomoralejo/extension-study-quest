@@ -7,6 +7,7 @@
 
     var quickRepliesPanel = null;
     var currentEditor = null;
+    var currentInsert = null; // destino do template: editor do Zoho ou painel de notas
     var panelAnchorButton = null;
     var observerTimeout = null;
     var repositionScheduled = false;
@@ -145,6 +146,7 @@
             e.preventDefault();
             e.stopPropagation();
             currentEditor = editor;
+            currentInsert = insertReplyIntoEditor;
             toggleQuickRepliesPanel(button);
         }
 
@@ -518,7 +520,7 @@
             item.appendChild(author);
 
             function insert() {
-                insertReplyIntoEditor(reply.title, reply.text);
+                (currentInsert || insertReplyIntoEditor)(reply.title, reply.text);
             }
             item.addEventListener('click', insert);
             item.addEventListener('keydown', function (e) {
@@ -1045,6 +1047,18 @@
             console.error('Study Quest: painel de notas falhou nesta varredura', err);
         }
     }
+
+    // O painel de notas (notes-panel.js) abre o mesmo painel de templates, com destino proprio.
+    globalThis.SQQuickReplies = {
+        toggle: function (button, onPick) {
+            currentEditor = null;
+            currentInsert = function (title, text) {
+                onPick(title, text);
+                closeQuickRepliesPanel();
+            };
+            toggleQuickRepliesPanel(button);
+        }
+    };
 
     // DESPACHANTE UNICO de mensagens do popup.
     //

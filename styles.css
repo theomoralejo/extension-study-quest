@@ -46,7 +46,8 @@
     background: #f5f6fa;
     border-radius: 8px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, .08);
-    z-index: 999999;
+    /* Acima do painel de notas (2147483000), que tambem abre este painel. */
+    z-index: 2147483600;
     display: flex;
     flex-direction: column;
     overflow: hidden;

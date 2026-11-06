@@ -49,3 +49,15 @@
 .sqn-send { background: #0067A6; color: #fff; border: 0; border-radius: 0.5em; padding: 0.5em 1em; font-family: inherit; font-size: 0.9375em; font-weight: 600; line-height: 1.2; cursor: pointer; }
 .sqn-send:hover:not(:disabled) { background: #004773; }
 .sqn-send:disabled { background: #b8c4cf; cursor: not-allowed; }
+
+.sqn-compose-left { display: flex; align-items: center; gap: 0.5em; min-width: 0; }
+.sqn-qr { display: inline-flex; align-items: center; justify-content: center; width: 2em; height: 2em; padding: 0; border: 1px solid #d0d5dc; border-radius: 0.5em; background: #fff; cursor: pointer; flex: none; }
+.sqn-qr:hover { border-color: #0067A6; background: #f0f6fb; }
+.sqn-qr:focus-visible { outline: 2px solid #0067A6; outline-offset: 1px; }
+.sqn-qr img { width: 16px; height: 16px; display: block; }
+.sqn-title-chip { display: flex; align-items: center; gap: 0.25em; font-size: 0.875em; background: #f0f6fb; border: 1px solid #cfe1ef; border-radius: 0.5em; padding: 0.25em 0.25em 0.25em 0.625em; min-width: 0; }
+.sqn-title-label { color: #6b7480; flex: none; }
+.sqn-title-text { font-weight: 600; color: #004773; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sqn-title-remove { border: 0; background: none; color: #6b7480; cursor: pointer; width: 1.75em; height: 1.75em; border-radius: 0.375em; flex: none; }
+.sqn-title-remove:hover { background: #e2edf6; color: #1d2530; }
+.sqn-title-chip[hidden] { display: none; }

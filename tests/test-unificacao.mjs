@@ -124,6 +124,8 @@ ok(nada === undefined, "mensagem desconhecida nao recebe resposta inventada", JS
 ok(sandbox.SQFieldHistory && typeof sandbox.SQFieldHistory.tick === "function",
     "SQFieldHistory.tick() existe para o observer unico chamar");
 
+ok(sandbox.SQQuickReplies && typeof sandbox.SQQuickReplies.toggle === "function",
+    "content.js expoe SQQuickReplies.toggle() para o painel de notas abrir os templates");
 ok(sandbox.SQNotesPanel && typeof sandbox.SQNotesPanel.tick === "function",
     "SQNotesPanel.tick() existe para o observer unico chamar");
 

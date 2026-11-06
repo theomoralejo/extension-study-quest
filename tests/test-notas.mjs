@@ -86,7 +86,7 @@ const NOTAS = [
     const corpo = await page.textContent(".sqn-note .sqn-body");
     ok(corpo.includes("Linha 1\nLinha 2") && !corpo.includes("<"), "HTML da nota vira texto com quebra de linha", JSON.stringify(corpo));
     await page.waitForTimeout(200);
-    ok(!estado.xss && (await page.$$(".sqn-panel img")).length === 0, "HTML da nota nao executa nem injeta elemento");
+    ok(!estado.xss && (await page.$$(".sqn-list img")).length === 0, "HTML da nota nao executa nem injeta elemento");
 
     // O Zoho tem raiz menor e estilo proprio em button/textarea: o painel nao pode herdar nada disso.
     const fs = await page.evaluate(() => ["sqn-panel", "sqn-body", "sqn-input", "sqn-send"].map((c) => parseFloat(getComputedStyle(document.querySelector("." + c)).fontSize)));
@@ -116,6 +116,25 @@ const NOTAS = [
     // ---- sair do registro ----
     await page.evaluate(() => { history.pushState({}, "", "/crm/org1/tab/Potentials/list"); SQNotesPanel.tick(); });
     ok(await page.isHidden(".sqn-tab"), "aba some fora de pagina de registro");
+    await page.close();
+}
+
+// ---- template pelo botao da Study Quest no painel ----
+{
+    const { page, estado } = await abrir(NOTAS);
+    // content.js fica de fora do teste: o painel de templates e simulado no mesmo contrato (toggle(botao, onPick)).
+    await page.evaluate(() => { globalThis.SQQuickReplies = { toggle: (btn, onPick) => onPick("Cobro docs", "Oi! Faltam os documentos.") }; });
+    await page.click(".sqn-tab");
+    await page.waitForSelector(".sqn-note");
+    ok(await page.isVisible(".sqn-qr img"), "botao da Study Quest aparece no rodape do painel");
+    await page.fill(".sqn-input", "Antes ");
+    await page.click(".sqn-qr");
+    ok((await page.inputValue(".sqn-input")) === "Antes Oi! Faltam os documentos.", "template entra no campo, no cursor", await page.inputValue(".sqn-input"));
+    ok((await page.textContent(".sqn-title-text")) === "Cobro docs", "titulo do template aparece como Titulo da nota");
+    await page.click(".sqn-send");
+    await page.waitForFunction(() => document.querySelectorAll(".sqn-note").length === 3);
+    ok(estado.posts[0]?.data?.[0]?.Note_Title === "Cobro docs", "nota sai com Note_Title do template", JSON.stringify(estado.posts[0]));
+    ok(await page.isHidden(".sqn-title-chip"), "titulo some depois de salvar");
     await page.close();
 }
 
