@@ -96,6 +96,7 @@ const NOTAS = [
     ok(tabR <= panL + 1, "aba aberta fica encostada fora do painel, sem cobrir", `aba.right=${tabR} painel.left=${panL}`);
 
     // ---- gravar ----
+    ok(await page.isVisible(".sqn-title-input"), "campo Titulo sempre visivel no painel");
     ok(await page.isDisabled(".sqn-send"), "botao desabilitado com campo vazio");
     await page.fill(".sqn-input", "Aluno confirmou janeiro");
     await page.click(".sqn-send");
@@ -130,11 +131,17 @@ const NOTAS = [
     await page.fill(".sqn-input", "Antes ");
     await page.click(".sqn-qr");
     ok((await page.inputValue(".sqn-input")) === "Antes Oi! Faltam os documentos.", "template entra no campo, no cursor", await page.inputValue(".sqn-input"));
-    ok((await page.textContent(".sqn-title-text")) === "Cobro docs", "titulo do template aparece como Titulo da nota");
+    ok((await page.inputValue(".sqn-title-input")) === "Cobro docs", "titulo do template preenche o campo Titulo");
     await page.click(".sqn-send");
     await page.waitForFunction(() => document.querySelectorAll(".sqn-note").length === 3);
     ok(estado.posts[0]?.data?.[0]?.Note_Title === "Cobro docs", "nota sai com Note_Title do template", JSON.stringify(estado.posts[0]));
-    ok(await page.isHidden(".sqn-title-chip"), "titulo some depois de salvar");
+    ok((await page.inputValue(".sqn-title-input")) === "", "campo Titulo limpa depois de salvar");
+    // titulo digitado a mao tambem vai como Note_Title
+    await page.fill(".sqn-title-input", "Ligação");
+    await page.fill(".sqn-input", "Conversamos sobre janeiro");
+    await page.click(".sqn-send");
+    await page.waitForFunction(() => document.querySelectorAll(".sqn-note").length === 4);
+    ok(estado.posts[1]?.data?.[0]?.Note_Title === "Ligação", "titulo digitado vai como Note_Title", JSON.stringify(estado.posts[1]));
     await page.close();
 }
 

@@ -41,6 +41,9 @@
 .sqn-retry { border: 1px solid #0067A6; color: #0067A6; background: #fff; border-radius: 0.5em; padding: 0.375em 0.875em; cursor: pointer; font: inherit; }
 
 .sqn-compose { border-top: 1px solid #e6e9ed; padding: 0.75em 0.875em; display: flex; flex-direction: column; gap: 0.5em; }
+.sqn-title-input { width: 100%; box-sizing: border-box; border: 1px solid #d0d5dc; border-radius: 0.5em; padding: 0.5em 0.625em; font: inherit; font-size: 1em; font-weight: 600; color: inherit; }
+.sqn-title-input::placeholder { font-weight: 400; }
+.sqn-title-input:focus { outline: 2px solid #0067A6; outline-offset: -1px; border-color: transparent; }
 .sqn-input { width: 100%; box-sizing: border-box; resize: vertical; min-height: 4.5em; max-height: 40vh; border: 1px solid #d0d5dc; border-radius: 0.5em; padding: 0.5em 0.625em; font: inherit; font-size: 1em; color: inherit; }
 .sqn-input:focus { outline: 2px solid #0067A6; outline-offset: -1px; border-color: transparent; }
 .sqn-error-inline { color: #b42318; font-size: 0.875em; }
@@ -55,9 +58,3 @@
 .sqn-qr:hover { border-color: #0067A6; background: #f0f6fb; }
 .sqn-qr:focus-visible { outline: 2px solid #0067A6; outline-offset: 1px; }
 .sqn-qr img { width: 16px; height: 16px; display: block; }
-.sqn-title-chip { display: flex; align-items: center; gap: 0.25em; font-size: 0.875em; background: #f0f6fb; border: 1px solid #cfe1ef; border-radius: 0.5em; padding: 0.25em 0.25em 0.25em 0.625em; min-width: 0; }
-.sqn-title-label { color: #6b7480; flex: none; }
-.sqn-title-text { font-weight: 600; color: #004773; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sqn-title-remove { border: 0; background: none; color: #6b7480; cursor: pointer; width: 1.75em; height: 1.75em; border-radius: 0.375em; flex: none; }
-.sqn-title-remove:hover { background: #e2edf6; color: #1d2530; }
-.sqn-title-chip[hidden] { display: none; }

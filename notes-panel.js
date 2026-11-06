@@ -23,7 +23,7 @@
     var tab = null, panel = null, listEl = null, countEl = null, input = null, sendBtn = null, errEl = null;
     var loadSeq = 0;
     var drafts = {};       // rascunho por registro: trocar de registro nao leva o texto junto
-    var titleChip = null, noteTitle = ""; // titulo vindo de um template, enviado como Note_Title
+    var titleInput = null; // titulo da nota (opcional): digitado ou vindo de um template, vira Note_Title
 
     function el(tag, cls, text) {
         var n = document.createElement(tag);
@@ -120,9 +120,15 @@
         errEl = el("div", "sqn-error-inline");
         errEl.setAttribute("role", "alert");
         errEl.hidden = true;
-        titleChip = el("div", "sqn-title-chip");
-        titleChip.hidden = true;
-        form.appendChild(titleChip);
+        titleInput = el("input", "sqn-title-input");
+        titleInput.type = "text";
+        titleInput.placeholder = "Título (opcional)";
+        titleInput.setAttribute("aria-label", "Título da nota");
+        titleInput.maxLength = 120;
+        titleInput.addEventListener("keydown", function (e) {
+            if (e.key === "Enter") { e.preventDefault(); if (e.metaKey || e.ctrlKey) send(); else input.focus(); }
+        });
+        form.appendChild(titleInput);
         form.appendChild(input);
         form.appendChild(errEl);
         form.appendChild(row);
@@ -153,18 +159,7 @@
     }
 
     function setTitle(title) {
-        noteTitle = title;
-        titleChip.textContent = "";
-        titleChip.hidden = !title;
-        if (!title) return;
-        titleChip.appendChild(el("span", "sqn-title-label", "Título: "));
-        titleChip.appendChild(el("span", "sqn-title-text", title));
-        var x = el("button", "sqn-title-remove", "✕");
-        x.type = "button";
-        x.title = "Remover título";
-        x.setAttribute("aria-label", "Remover título da nota");
-        x.addEventListener("click", function () { setTitle(""); input.focus(); });
-        titleChip.appendChild(x);
+        titleInput.value = title;
     }
 
     function syncSend() {
@@ -256,7 +251,8 @@
                 Note_Content: text,
                 Parent_Id: { module: { api_name: current.module }, id: current.id }
             };
-            if (noteTitle) note.Note_Title = noteTitle;
+            var title = titleInput.value.trim();
+            if (title) note.Note_Title = title;
             var res = await globalThis.SQZoho.post("/" + current.module + "/" + current.id + "/Notes", {
                 data: [note]
             });
@@ -289,11 +285,12 @@
             return;
         }
         if (current && current.id === rec.id) return;
-        if (current && input) drafts[current.id] = input.value;
+        if (current && input) drafts[current.id] = { title: titleInput.value, body: input.value };
         current = { tab: rec.tab, module: null, id: rec.id };
         if (!tab) build();
-        input.value = drafts[rec.id] || "";
-        setTitle("");
+        var draft = drafts[rec.id] || { title: "", body: "" };
+        input.value = draft.body;
+        setTitle(draft.title);
         syncSend();
         tab.hidden = false;
         errEl.hidden = true;
