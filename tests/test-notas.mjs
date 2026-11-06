@@ -141,6 +141,25 @@ const NOTAS = [
     await page.close();
 }
 
+// ---- historico de campo em qualquer modulo (Contact), pelo resolvedor unico ----
+{
+    const page = await browser.newPage();
+    const pedidas = [];
+    await page.route("**/crm/v8/**", (route) => {
+        const u = new URL(route.request().url());
+        pedidas.push(u.pathname);
+        if (u.pathname.endsWith("/settings/modules")) {
+            return route.fulfill({ json: { modules: [{ api_name: "Contacts", module_name: "Contacts", singular_label: "Contact" }] } });
+        }
+        return route.fulfill({ status: 204, body: "" });
+    });
+    await page.goto(`${BASE}/crm/org1/tab/Contacts/777`);
+    await page.evaluate(() => SQFieldHistory.tick());
+    await page.waitForTimeout(500);
+    ok(pedidas.some((p) => p.endsWith("/Contacts/777/__timeline")), "historico de campo le a Timeline de um Contact", pedidas.join(" "));
+    await page.close();
+}
+
 await browser.close();
 server.close();
 console.log(falhas ? `\n${falhas} falha(s)` : "\nTudo passou");

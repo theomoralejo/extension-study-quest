@@ -1,7 +1,8 @@
 /**
  * field-history.js — historico de alteracoes de campo no Zoho CRM.
  *
- * Coloca um icone de relogio ao lado do nome de cada campo em Deal e Lead.
+ * Coloca um icone de relogio ao lado do nome de cada campo, em qualquer modulo
+ * (Deal, Lead, Contact, modulo custom...).
  * Clicar mostra toda a mudanca daquele campo: valor anterior, novo valor, quem
  * mudou e quando. A fonte e a Timeline do proprio registro, lida com a sessao
  * que ja esta aberta na aba. Quando o Zoho recusa a chamada, o modulo le o que
@@ -28,7 +29,6 @@
 
     var SQ = globalThis.SQBrowser;
 
-    var MODULES = { Potentials: "Deals", Deals: "Deals", Leads: "Leads" };
     // O relogio e montado por DOM, nao por `innerHTML`. O original usava string
     // (constante, sem dado de usuario), mas o `web-ext lint` do Firefox reprova
     // atribuicao a innerHTML como UNSAFE_VAR_ASSIGNMENT e isso travaria a
@@ -375,7 +375,7 @@
             tc2.title = created.value || "";
             var bc2 = el("td", "zfh-by", created.by); bc2.title = created.by;
             tr2.append(
-                el("td", "zfh-origin", (current.module === "Deals" ? "Deal" : "Lead") + " criado"),
+                el("td", "zfh-origin", current.label + " criado"),
                 tc2, bc2, el("td", "zfh-when", fmtDate(created.when))
             );
             tbody.append(tr2);
@@ -398,9 +398,9 @@
         if (location.href === lastUrl) return;
         lastUrl = location.href;
         closePopover();
-        var m = location.pathname.match(/\/tab\/(Potentials|Deals|Leads)\/(\d+)/);
-        var next = m ? { module: MODULES[m[1]], id: m[2] } : null;
-        if (next && current && next.id === current.id) return;
+        var rec = globalThis.SQZoho.recordFromUrl();
+        if (rec && current && rec.id === current.id) return;
+        var next = rec ? { tab: rec.tab, module: rec.tab, label: rec.tab, id: rec.id } : null;
         current = next;
         labels = new Map(); labelToApi = new Map(); record = null; apiHistory = null; apiPromise = null;
         Object.assign(status, {
@@ -413,6 +413,10 @@
         var stored = (bag && bag[key]) || [];
         status.scraped = stored.length;
         stored.forEach(function (c) { labels.set(norm(c.label), c.label); });
+        var mod = await globalThis.SQZoho.module(next.tab);
+        if (current !== next) return; // trocou de registro enquanto resolvia
+        next.module = mod.api; next.label = mod.label;
+        status.page = next.module + " " + next.id;
         apiPromise = loadApi(current.module, current.id);
         apiPromise.then(function (h) { apiHistory = h; addIcons(); })
             .catch(function (e) { status.apiError = e.message; });

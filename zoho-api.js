@@ -4,7 +4,7 @@
  * Fonte unica para o historico de campo e o painel de notas: cookie de CSRF,
  * org da URL e a versao da API (descoberta uma vez, de v8 para tras).
  *
- * Expoe `globalThis.SQZoho = { get, post }`.
+ * Expoe `globalThis.SQZoho = { get, post, recordFromUrl, module }`.
  */
 (function () {
     'use strict';
@@ -56,5 +56,32 @@
         return json || {};
     }
 
-    globalThis.SQZoho = { get: get, post: post };
+    /** Registro aberto na aba: { tab, id } ou null fora de pagina de registro. */
+    function recordFromUrl() {
+        var m = location.pathname.match(/\/tab\/([A-Za-z0-9_]+)\/(\d+)\/?$/);
+        return m ? { tab: m[1], id: m[2] } : null;
+    }
+
+    // Nome na URL (Potentials, CustomModule3...) -> { api, label } do modulo.
+    var modules = null;
+    async function module(tab) {
+        if (!modules) {
+            var map = { Potentials: { api: "Deals", label: "Deal" } };
+            try {
+                var body = await get("/settings/modules");
+                (body.modules || []).forEach(function (m) {
+                    if (!m.api_name) return;
+                    var info = { api: m.api_name, label: m.singular_label || m.api_name };
+                    map[m.api_name] = info;
+                    if (m.module_name) map[m.module_name] = info;
+                });
+                modules = map;
+            } catch (e) {
+                return map[tab] || { api: tab, label: tab }; // sem mapa nao fica em cache: tenta de novo depois
+            }
+        }
+        return modules[tab] || { api: tab, label: tab };
+    }
+
+    globalThis.SQZoho = { get: get, post: post, recordFromUrl: recordFromUrl, module: module };
 })();

@@ -17,9 +17,7 @@
 
     var FIELDS = "Note_Title,Note_Content,Created_Time,Created_By,Owner";
     var MAX_PAGES = 10; // 2000 notas: teto para nao varrer sem fim
-    var ALIASES = { Potentials: "Deals" };
 
-    var tabToApi = null;   // nome na URL -> api_name do modulo
     var current = null;    // { tab, module, id }
     var isOpen = false;
     var tab = null, panel = null, listEl = null, countEl = null, input = null, sendBtn = null, errEl = null;
@@ -48,25 +46,8 @@
         return d.toLocaleString(undefined, { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
     }
 
-    function recordFromUrl() {
-        var m = location.pathname.match(/\/tab\/([A-Za-z0-9_]+)\/(\d+)\/?$/);
-        return m ? { tab: m[1], id: m[2] } : null;
-    }
-
     async function resolveModule(tabName) {
-        if (!tabToApi) {
-            tabToApi = Object.assign({}, ALIASES);
-            try {
-                var body = await globalThis.SQZoho.get("/settings/modules");
-                (body.modules || []).forEach(function (mod) {
-                    if (mod.api_name) {
-                        tabToApi[mod.api_name] = mod.api_name;
-                        if (mod.module_name) tabToApi[mod.module_name] = mod.api_name;
-                    }
-                });
-            } catch (e) { /* sem mapa: usa o nome da URL e o erro aparece no painel */ }
-        }
-        return tabToApi[tabName] || tabName;
+        return (await globalThis.SQZoho.module(tabName)).api;
     }
 
     // ---------- montagem ----------
@@ -249,7 +230,7 @@
     function tick() {
         if (location.href === lastUrl) return;
         lastUrl = location.href;
-        var rec = recordFromUrl();
+        var rec = globalThis.SQZoho.recordFromUrl();
         if (!rec) {
             current = null;
             if (tab) { tab.hidden = true; panel.hidden = true; }
