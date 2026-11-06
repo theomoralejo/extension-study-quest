@@ -1,0 +1,50 @@
+/* Painel lateral de notas. Prefixo sqn- para nao colidir com as outras folhas de estilo. */
+.sqn-tab {
+  position: fixed; right: 0; top: 45vh; z-index: 2147483000;
+  writing-mode: vertical-rl; padding: 0.75rem 0.45rem;
+  background: #0067A6; color: #fff; border: 0; border-radius: 0.5rem 0 0 0.5rem;
+  font: 600 0.8125rem/1 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  cursor: pointer; box-shadow: -2px 2px 8px rgba(0, 0, 0, 0.15);
+}
+.sqn-tab:hover { background: #004773; }
+.sqn-tab:focus-visible { outline: 2px solid #F28D19; outline-offset: 2px; }
+.sqn-tab-open { right: min(26rem, 92vw); }
+.sqn-tab[hidden], .sqn-panel[hidden], .sqn-error-inline[hidden] { display: none; }
+
+.sqn-panel {
+  position: fixed; top: 0.75rem; right: 0.75rem; bottom: 0.75rem; z-index: 2147483000;
+  width: min(25rem, calc(92vw - 1.5rem)); display: flex; flex-direction: column;
+  background: #fff; border: 1px solid #dde1e6; border-radius: 0.75rem;
+  box-shadow: 0 0.5rem 2rem rgba(0, 0, 0, 0.18);
+  font: 0.875rem/1.45 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #1d2530;
+}
+.sqn-head { display: flex; align-items: center; gap: 0.5rem; padding: 0.75rem 0.875rem; border-bottom: 1px solid #e6e9ed; }
+.sqn-title { font-size: 0.9375rem; }
+.sqn-count { font-size: 0.75rem; color: #E95320; background: #fdeee6; border-radius: 999px; padding: 0.1rem 0.5rem; }
+.sqn-count:empty { display: none; }
+.sqn-spacer { flex: 1; }
+.sqn-icon-btn { border: 0; background: none; color: #6b7480; font-size: 1rem; width: 2rem; height: 2rem; border-radius: 0.375rem; cursor: pointer; }
+.sqn-icon-btn:hover { background: #f1f3f5; color: #1d2530; }
+
+.sqn-list { flex: 1; min-height: 0; overflow-y: auto; padding: 0.75rem 0.875rem; display: flex; flex-direction: column; gap: 0.625rem; }
+.sqn-note { border: 1px solid #e6e9ed; border-radius: 0.625rem; padding: 0.5rem 0.75rem; }
+.sqn-meta { display: flex; justify-content: space-between; gap: 0.5rem; font-size: 0.75rem; color: #6b7480; margin-bottom: 0.25rem; }
+.sqn-author { font-weight: 600; color: #004773; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sqn-date { flex: none; }
+.sqn-note-title { font-weight: 600; margin-bottom: 0.125rem; overflow-wrap: anywhere; }
+.sqn-body { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+.sqn-loading, .sqn-empty, .sqn-error { text-align: center; color: #6b7480; padding: 2rem 0.5rem; }
+.sqn-error { color: #b42318; }
+.sqn-loading p, .sqn-empty p, .sqn-error p { margin: 0 0 0.75rem; }
+.sqn-retry { border: 1px solid #0067A6; color: #0067A6; background: #fff; border-radius: 0.5rem; padding: 0.375rem 0.875rem; cursor: pointer; font: inherit; }
+
+.sqn-compose { border-top: 1px solid #e6e9ed; padding: 0.75rem 0.875rem; display: flex; flex-direction: column; gap: 0.5rem; }
+.sqn-input { width: 100%; box-sizing: border-box; resize: vertical; min-height: 4.5rem; max-height: 40vh; border: 1px solid #d0d5dc; border-radius: 0.5rem; padding: 0.5rem 0.625rem; font: inherit; color: inherit; }
+.sqn-input:focus { outline: 2px solid #0067A6; outline-offset: -1px; border-color: transparent; }
+.sqn-error-inline { color: #b42318; font-size: 0.8125rem; }
+.sqn-compose-row { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.sqn-hint { font-size: 0.75rem; color: #8a929c; }
+.sqn-send { background: #0067A6; color: #fff; border: 0; border-radius: 0.5rem; padding: 0.5rem 1rem; font: 600 0.8125rem/1.2 inherit; font-family: inherit; cursor: pointer; }
+.sqn-send:hover:not(:disabled) { background: #004773; }
+.sqn-send:disabled { background: #b8c4cf; cursor: not-allowed; }

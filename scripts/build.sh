@@ -26,12 +26,15 @@ FILES=(
   browser-api.js
   config.js
   content.js
+  zoho-api.js
   field-history.js
+  notes-panel.js
   popup.html
   popup.css
   popup.js
   styles.css
   field-history.css
+  notes-panel.css
 )
 DIRS=(
   icons

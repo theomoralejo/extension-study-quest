@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Study Quest Extension",
-  "version": "1.2.0",
-  "description": "Respostas rapidas nas notas do Zoho CRM, botao de WhatsApp, copiar campo e historico de alteracoes de campo",
+  "version": "1.3.0",
+  "description": "Respostas rapidas nas notas do Zoho CRM, painel lateral de notas, botao de WhatsApp, copiar campo e historico de alteracoes de campo",
   "browser_specific_settings": {
     "gecko": {
       "id": "study-quest-extension@studyquestuk.com",
@@ -59,12 +59,15 @@
       "js": [
         "browser-api.js",
         "config.js",
+        "zoho-api.js",
         "field-history.js",
+        "notes-panel.js",
         "content.js"
       ],
       "css": [
         "styles.css",
-        "field-history.css"
+        "field-history.css",
+        "notes-panel.css"
       ],
       "run_at": "document_idle"
     }
