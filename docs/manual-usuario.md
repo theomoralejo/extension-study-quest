@@ -2,7 +2,7 @@
 
 ## Respostas rápidas com campos do registro (`#Campo`)
 1. Clique no ícone da extensão e preencha **Título** e **Texto da Resposta**.
-2. Para puxar um dado do Deal, escreva `#` + o nome do campo, ex.: `Olá #Deal_Name, sua etapa é #Stage.`
+2. Para puxar um dado do Deal, digite `#` e o começo do campo (ex.: `#st`). A lista sugere os campos: setas para escolher, Enter ou Tab para completar, Esc para fechar.
 3. Não sabe o nome? Com um registro aberto no Zoho, clique em **Inserir campo**, busque e clique no campo. Ele entra onde está o cursor e mostra o valor deste registro.
 4. Ao inserir a resposta numa nota, cada `#Campo` vira o valor do registro aberto. Hashtag que não é campo (ex.: `#StudyQuest`) fica como está.
 

@@ -34,6 +34,7 @@
 
         showFieldHistoryStatus();
         setupFieldPicker();
+        setupAutocomplete();
 
         // Alternar entre escolher categoria existente e criar uma nova
         var btnNew = document.getElementById('btnNewCategory');
@@ -370,15 +371,41 @@
         document.getElementById('fieldPickerStatus').textContent = text;
     }
 
-    function loadFields() {
-        pickerStatus('Carregando campos do registro...');
-        document.getElementById('fieldSearch').disabled = true;
-        SQ.activeTab().then(function (tab) {
+    var FIELDS_CACHE = 'sqFieldsCache';
+    var fieldsPromise = null;
+
+    /**
+     * Campos do registro aberto. Sem registro na aba, usa a ultima lista vista
+     * (sem valores), para o autocompletar funcionar com o popup aberto em qualquer aba.
+     */
+    function getFields() {
+        if (fieldsPromise) return fieldsPromise;
+        fieldsPromise = SQ.activeTab().then(function (tab) {
             if (!tab || !tab.url || tab.url.indexOf('zoho') === -1) return null;
             return SQ.sendMessageToTab(tab.id, { action: 'recordFields' });
         }).then(function (res) {
+            if (res && res.fields) {
+                var cache = {};
+                cache[FIELDS_CACHE] = { module: res.module, fields: res.fields.map(function (f) { return { api: f.api, label: f.label }; }) };
+                SQ.storageSet(cache);
+                return res;
+            }
+            return SQ.storageGet([FIELDS_CACHE]).then(function (c) {
+                var cached = c && c[FIELDS_CACHE];
+                if (cached && cached.fields && cached.fields.length) { cached.cached = true; return cached; }
+                return res; // null ou { error }
+            });
+        });
+        return fieldsPromise;
+    }
+
+    function loadFields() {
+        pickerStatus('Carregando campos do registro...');
+        document.getElementById('fieldSearch').disabled = true;
+        getFields().then(function (res) {
             document.getElementById('fieldSearch').disabled = false;
             if (res && res.error) {
+                fieldsPromise = null; // falha nao fica em cache: tenta de novo no proximo clique
                 pickerStatus('O Zoho não devolveu os campos (' + res.error + '). Confira se você está logado e tente de novo.');
                 return;
             }
@@ -400,7 +427,7 @@
             return !q || f.label.toLowerCase().indexOf(q) !== -1 || f.api.toLowerCase().indexOf(q) !== -1;
         });
         pickerStatus(shown.length
-            ? 'Campos de ' + fieldsLoaded.module + ' · o valor abaixo é o deste registro'
+            ? 'Campos de ' + fieldsLoaded.module + (fieldsLoaded.cached ? ' · abra o registro no Zoho para ver os valores' : ' · o valor abaixo é o deste registro')
             : 'Nenhum campo com "' + q + '". Limpe a busca para ver todos.');
         shown.forEach(function (f) {
             var li = document.createElement('li');
@@ -417,13 +444,140 @@
             top.appendChild(code);
             var val = document.createElement('div');
             val.className = 'field-item-value';
-            val.textContent = f.value || '(vazio neste registro)';
+            val.textContent = fieldsLoaded.cached ? '' : (f.value || '(vazio neste registro)');
             b.appendChild(top);
             b.appendChild(val);
             b.addEventListener('click', function () { insertToken('#' + f.api); });
             li.appendChild(b);
             list.appendChild(li);
         });
+    }
+
+    // ---------- autocompletar: digitar #ca sugere os campos ----------
+    var suggest = { open: false, items: [], active: 0, start: 0 };
+
+    /** `#texto` logo antes do cursor, comecando no inicio ou depois de espaco/pontuacao. */
+    function tokenAtCaret(ta) {
+        var before = ta.value.slice(0, ta.selectionStart);
+        var m = before.match(/(^|[^A-Za-z0-9_#])#([A-Za-z0-9_]*)$/);
+        return m ? { query: m[2], start: before.length - m[2].length - 1 } : null;
+    }
+
+    function rankFields(fields, q) {
+        q = q.toLowerCase();
+        var starts = [], contains = [];
+        fields.forEach(function (f) {
+            var api = f.api.toLowerCase(), label = f.label.toLowerCase();
+            if (!q || api.indexOf(q) === 0 || label.indexOf(q) === 0) starts.push(f);
+            else if (api.indexOf(q) !== -1 || label.indexOf(q) !== -1) contains.push(f);
+        });
+        return starts.concat(contains).slice(0, 8);
+    }
+
+    function setupAutocomplete() {
+        var ta = document.getElementById('replyText');
+        var box = document.getElementById('fieldSuggest');
+
+        function update() {
+            var tok = tokenAtCaret(ta);
+            if (!tok) { closeSuggest(); return; }
+            getFields().then(function (res) {
+                if (tokenAtCaret(ta) === null) return; // cursor saiu do # enquanto carregava
+                suggest.start = tok.start;
+                suggest.items = res && res.fields ? rankFields(res.fields, tok.query) : [];
+                suggest.active = 0;
+                suggest.empty = !(res && res.fields)
+                    ? 'Abra um registro do Zoho nesta aba para ver os campos.'
+                    : 'Nenhum campo com "' + tok.query + '".';
+                renderSuggest();
+            });
+        }
+
+        ta.addEventListener('input', update);
+        ta.addEventListener('click', update);
+        ta.addEventListener('blur', function () { setTimeout(closeSuggest, 150); });
+        ta.addEventListener('keydown', function (e) {
+            if (!suggest.open) return;
+            if (e.key === 'Escape') { e.preventDefault(); closeSuggest(); return; }
+            if (!suggest.items.length) return;
+            if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                e.preventDefault();
+                var n = suggest.items.length;
+                suggest.active = (suggest.active + (e.key === 'ArrowDown' ? 1 : n - 1)) % n;
+                renderSuggest();
+            } else if (e.key === 'Enter' || e.key === 'Tab') {
+                e.preventDefault();
+                pickSuggest(suggest.items[suggest.active]);
+            }
+        });
+        // mousedown + preventDefault: o clique escolhe sem tirar o foco do campo
+        box.addEventListener('mousedown', function (e) {
+            var li = e.target.closest('[data-api]');
+            if (!li) return;
+            e.preventDefault();
+            pickSuggest(suggest.items[Number(li.dataset.index)]);
+        });
+    }
+
+    function renderSuggest() {
+        var ta = document.getElementById('replyText');
+        var box = document.getElementById('fieldSuggest');
+        box.textContent = '';
+        if (!suggest.items.length) {
+            var li = document.createElement('li');
+            li.className = 'suggest-empty';
+            li.textContent = suggest.empty;
+            box.appendChild(li);
+        }
+        suggest.items.forEach(function (f, i) {
+            var li = document.createElement('li');
+            li.id = 'suggest-' + i;
+            li.className = 'suggest-item' + (i === suggest.active ? ' is-active' : '');
+            li.setAttribute('role', 'option');
+            li.setAttribute('aria-selected', i === suggest.active ? 'true' : 'false');
+            li.dataset.api = f.api;
+            li.dataset.index = i;
+            var label = document.createElement('span');
+            label.textContent = f.label;
+            var code = document.createElement('code');
+            code.textContent = '#' + f.api;
+            li.appendChild(label);
+            li.appendChild(code);
+            box.appendChild(li);
+        });
+        box.classList.remove('is-hidden');
+        suggest.open = true;
+        ta.setAttribute('aria-expanded', 'true');
+        if (suggest.items.length) {
+            ta.setAttribute('aria-activedescendant', 'suggest-' + suggest.active);
+            var act = document.getElementById('suggest-' + suggest.active);
+            if (act) act.scrollIntoView({ block: 'nearest' });
+        } else {
+            ta.removeAttribute('aria-activedescendant');
+        }
+    }
+
+    function closeSuggest() {
+        var ta = document.getElementById('replyText');
+        document.getElementById('fieldSuggest').classList.add('is-hidden');
+        suggest.open = false;
+        ta.setAttribute('aria-expanded', 'false');
+        ta.removeAttribute('aria-activedescendant');
+    }
+
+    /** Troca o `#parcial` digitado pelo campo escolhido, com espaco depois. */
+    function pickSuggest(f) {
+        if (!f) return;
+        var ta = document.getElementById('replyText');
+        var end = ta.selectionStart;
+        var token = '#' + f.api + ' ';
+        var after = ta.value.slice(end).replace(/^[A-Za-z0-9_]*/, '');
+        if (after.charAt(0) === ' ') token = token.trimEnd();
+        ta.value = ta.value.slice(0, suggest.start) + token + after;
+        var pos = suggest.start + token.length;
+        ta.setSelectionRange(pos, pos);
+        ta.focus();
+        closeSuggest();
     }
 
     /** Coloca o token no cursor do "Texto da Resposta", com espaco antes quando colado em palavra. */

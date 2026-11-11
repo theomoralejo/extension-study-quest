@@ -429,3 +429,14 @@ button[type="submit"][disabled] {
 .btn-copy { background: #e8f1f8; color: var(--sq-primary-dark); }
 .btn-copy:hover { background: #d6e7f4; }
 .btn-copy.is-copied { background: var(--sq-success-bg, #E6F4EE); color: var(--sq-success, #0B6E4F); }
+
+/* Autocompletar de #Campo */
+.suggest-wrap { position: relative; }
+.field-suggest { position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 10; list-style: none; margin: 0; padding: 4px 0; max-height: 15em; overflow-y: auto; background: #fff; border: 1px solid #dde1e6; border-radius: var(--radius-sm); box-shadow: 0 6px 18px rgba(0, 0, 0, .12); }
+.field-suggest.is-hidden { display: none; }
+.suggest-item { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding: 6px 10px; font-size: 13px; color: var(--sq-text-main); cursor: pointer; }
+.suggest-item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.suggest-item code { flex: none; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; color: var(--sq-text-muted); }
+.suggest-item:hover, .suggest-item.is-active { background: #f0f6fb; }
+.suggest-item.is-active code { color: var(--sq-primary-dark); }
+.suggest-empty { padding: 8px 10px; font-size: 12px; color: var(--sq-text-muted); }

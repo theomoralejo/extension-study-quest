@@ -44,10 +44,13 @@
 
       <div class="form-group">
         <label for="replyText">Texto da Resposta</label>
-        <textarea id="replyText" name="replyText" placeholder="Digite a resposta completa aqui..." required
-          rows="4"></textarea>
+        <div class="suggest-wrap">
+          <textarea id="replyText" name="replyText" placeholder="Digite a resposta completa aqui..." required
+            rows="4" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="fieldSuggest"></textarea>
+          <ul id="fieldSuggest" class="field-suggest is-hidden" role="listbox" aria-label="Campos do registro"></ul>
+        </div>
         <div class="field-tools">
-          <span class="field-hint">Use <code>#Campo</code> para puxar o valor do registro, ex.: <code>#Deal_Name</code></span>
+          <span class="field-hint">Digite <code>#</code> para puxar um campo do registro</span>
           <button type="button" id="btnFields" class="btn-link" aria-expanded="false" aria-controls="fieldPicker">Inserir campo</button>
         </div>
         <div id="fieldPicker" class="field-picker is-hidden">

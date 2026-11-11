@@ -281,6 +281,35 @@ async function abrir(urlPath, { recordStatus = 200, ctx = null } = {}) {
     await p.fill("#fieldSearch", "");
     await p.click('.field-item:has-text("Deal Name")');
     ok((await p.inputValue("#replyText")) === "Oi, #Deal_Name tudo bem?", "campo entra no cursor do Texto da Resposta", await p.inputValue("#replyText"));
+
+    // autocompletar: digitar # sugere os campos
+    await p.fill("#replyText", "");
+    await p.click("#replyText");
+    await p.keyboard.type("Oi #st");
+    await p.waitForSelector("#fieldSuggest:not(.is-hidden) .suggest-item");
+    const sug = await p.$$eval(".suggest-item code", (cs) => cs.map((c) => c.textContent));
+    ok(sug[0] === "#Stage", "digitar #st sugere Stage primeiro", sug.join(","));
+    await p.keyboard.press("Enter");
+    ok((await p.inputValue("#replyText")) === "Oi #Stage ", "Enter completa o campo e poe espaco", JSON.stringify(await p.inputValue("#replyText")));
+    ok(await p.isHidden("#fieldSuggest"), "lista fecha depois de escolher");
+    await p.keyboard.type("e #");
+    await p.waitForSelector("#fieldSuggest:not(.is-hidden) .suggest-item");
+    ok((await p.$$(".suggest-item")).length === 2, "# sozinho mostra todos os campos");
+    await p.keyboard.press("ArrowDown");
+    await p.keyboard.press("Tab");
+    ok((await p.inputValue("#replyText")) === "Oi #Stage e #Stage ", "seta para baixo + Tab escolhe o segundo", JSON.stringify(await p.inputValue("#replyText")));
+    await p.keyboard.type("#de");
+    await p.waitForSelector("#fieldSuggest:not(.is-hidden) .suggest-item");
+    await p.click('.suggest-item:has-text("Deal Name")');
+    ok((await p.inputValue("#replyText")).endsWith("#Deal_Name "), "clique escolhe o campo", JSON.stringify(await p.inputValue("#replyText")));
+    await p.keyboard.type("#zzz");
+    await p.waitForSelector("#fieldSuggest:not(.is-hidden) .suggest-empty");
+    ok((await p.textContent(".suggest-empty")).includes("Nenhum campo"), "sem resultado, a lista diz isso");
+    await p.keyboard.press("Escape");
+    ok(await p.isHidden("#fieldSuggest"), "Esc fecha a lista");
+    await p.fill("#replyText", "email@#");
+    await p.waitForTimeout(100);
+    ok(await p.isHidden("#fieldSuggest"), "# colado em palavra (e-mail) nao abre a lista");
     await context.close();
 
     const ctx2 = await browser.newContext({ viewport: { width: 400, height: 700 } });
@@ -295,7 +324,28 @@ async function abrir(urlPath, { recordStatus = 200, ctx = null } = {}) {
     await p2.click("#btnFields");
     await p2.waitForFunction(() => document.getElementById("fieldPickerStatus").textContent.includes("Abra um registro"));
     ok(true, "sem registro aberto, o seletor explica o que fazer");
+    await p2.click("#replyText");
+    await p2.keyboard.type("#de");
+    await p2.waitForSelector("#fieldSuggest:not(.is-hidden) .suggest-empty");
+    ok((await p2.textContent(".suggest-empty")).includes("Abra um registro"), "autocompletar sem registro e sem cache explica o que fazer");
     await ctx2.close();
+
+    // popup aberto fora do registro: usa a ultima lista de campos vista
+    const ctx3 = await browser.newContext({ viewport: { width: 400, height: 700 } });
+    const p3 = await ctx3.newPage();
+    await p3.addInitScript(() => {
+        window.fetch = () => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve([]), text: () => Promise.resolve("[]") });
+        const cache = { sqFieldsCache: { module: "Deal", fields: [{ api: "Deal_Name", label: "Deal Name" }] } };
+        window.chrome = { runtime: { id: "t" }, storage: { local: { get: () => Promise.resolve(cache), set: () => Promise.resolve() } },
+            tabs: { query: () => Promise.resolve([{ id: 1, url: "https://mail.google.com/" }]), sendMessage: () => Promise.resolve(null) } };
+    });
+    await p3.goto(BASE + "/popup.html");
+    await p3.click("#replyText");
+    await p3.keyboard.type("#de");
+    await p3.waitForSelector("#fieldSuggest:not(.is-hidden) .suggest-item");
+    await p3.keyboard.press("Enter");
+    ok((await p3.inputValue("#replyText")) === "#Deal_Name ", "fora do Zoho, o autocompletar usa a ultima lista de campos", JSON.stringify(await p3.inputValue("#replyText")));
+    await ctx3.close();
 }
 
 await browser.close();
