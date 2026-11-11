@@ -25,6 +25,7 @@
     var isOpen = false;
     var tab = null, panel = null, listEl = null, countEl = null, input = null, sendBtn = null, errEl = null;
     var titleInput = null, shareBox = null, statusEl = null, editBar = null, emojiBox = null;
+    var toLeft = null, toRight = null, gripLeft = null, gripRight = null;
     var loadSeq = 0;
     var drafts = {};       // rascunho por registro: trocar de registro nao leva o texto junto
     var editing = null;    // nota em edicao: { id, author } ou null (criando nota nova)
@@ -263,6 +264,12 @@
         countEl = el("span", "sqn-count");
         head.appendChild(countEl);
         head.appendChild(el("span", "sqn-spacer"));
+        toLeft = button("sqn-icon-btn", "←", "Encostar o painel na esquerda");
+        toRight = button("sqn-icon-btn", "→", "Encostar o painel na direita");
+        toLeft.addEventListener("click", function () { dockTo("left"); });
+        toRight.addEventListener("click", function () { dockTo("right"); });
+        head.appendChild(toLeft);
+        head.appendChild(toRight);
         var refresh = button("sqn-icon-btn", "↻", "Recarregar notas");
         refresh.addEventListener("click", function () { load(); });
         var close = button("sqn-icon-btn", "✕", "Recolher painel de notas");
@@ -359,12 +366,20 @@
         form.appendChild(el("div", "sqn-hint", "Ctrl/⌘ + Enter salva"));
         form.addEventListener("submit", function (e) { e.preventDefault(); send(); });
 
+        panel.dataset.sqDock = "right";
+        gripLeft = el("div", "sqn-grip sqn-grip-left");
+        gripRight = el("div", "sqn-grip sqn-grip-right");
+        [gripLeft, gripRight].forEach(function (g) { g.title = "Arraste para mudar o tamanho"; g.setAttribute("aria-hidden", "true"); });
         var drag = globalThis.SQDrag;
         if (drag) {
             drag.attach(panel, head, "notes", { keepHeight: true, maxHeight: 0.8, onMove: syncTab, onReset: syncTab });
+            drag.attachResize(panel, gripLeft, "notes", "left", { onMove: syncTab });
+            drag.attachResize(panel, gripRight, "notes", "right", { onMove: syncTab });
             drag.attachEdge(tab, "notesTab");
             window.addEventListener("resize", function () { drag.clamp(panel, "notes"); syncTab(); });
         }
+        panel.appendChild(gripLeft);
+        panel.appendChild(gripRight);
 
         panel.appendChild(head);
         panel.appendChild(listEl);
@@ -441,8 +456,9 @@
     function syncTab() {
         if (!tab) return;
         var drag = globalThis.SQDrag;
+        syncDock();
         tab.dataset.sqFixed = isOpen ? "1" : "0";
-        if (!isOpen || !drag || !panel.style.left) { // painel no lugar padrao: CSS cuida da aba
+        if (!isOpen || !drag || (!panel.style.left && !panel.style.width)) { // painel no lugar padrao: CSS cuida da aba
             tab.style.left = "";
             tab.style.right = "";
             var edge = !isOpen && drag && drag.saved("notesTab");
@@ -455,6 +471,22 @@
         tab.style.right = "auto";
         tab.style.left = left + "px";
         tab.style.top = (p.top + 16) + "px";
+    }
+
+    /** Setas e cantos so onde levam a algum lugar: encostado a direita vai para a esquerda, e vice-versa; solto, os dois. */
+    function syncDock() {
+        var side = panel.dataset.sqDock || "";
+        toLeft.hidden = side === "left";
+        toRight.hidden = side === "right";
+        gripLeft.hidden = side === "left";
+        gripRight.hidden = side === "right";
+    }
+
+    function dockTo(side) {
+        if (!globalThis.SQDrag) return;
+        globalThis.SQDrag.dock(panel, "notes", side);
+        syncTab();
+        (side === "left" ? toRight : toLeft).focus();
     }
 
     // ---------- o fluxo sobrevive a recolher, trocar de pagina e recarregar ----------
@@ -539,10 +571,64 @@
 
     function noteBody(n) {
         var c = n.Note_Content || "";
-        if (c.indexOf("<") === -1) return el("div", "sqn-body", c);
-        var body = el("div", "sqn-body sqn-body-html");
-        body.appendChild(safeFragment(c));
+        var body;
+        if (c.indexOf("<") === -1) body = el("div", "sqn-body", c);
+        else { body = el("div", "sqn-body sqn-body-html"); body.appendChild(safeFragment(c)); }
+        markMentions(body);
         return body;
+    }
+
+    // ---------- mencoes (@pessoa) ----------
+    // A doc da API nao descreve como a mencao vem no Note_Content. Cobre as tres formas
+    // possiveis: link cujo texto comeca com @, o codigo crm[user#id#...]crm e @Nome de um usuario do Zoho.
+    // Mencao vira nome em negrito e azul, sem link.
+    var usersPromise = null;
+    function zohoUsers() {
+        if (!usersPromise) {
+            usersPromise = globalThis.SQZoho.get("/users?type=AllUsers&per_page=200").then(function (b) {
+                return (b.users || []).map(function (u) {
+                    return { id: String(u.id), name: u.full_name || [u.first_name, u.last_name].filter(Boolean).join(" ") };
+                }).filter(function (u) { return u.name; });
+            }).catch(function () { usersPromise = null; return []; });
+        }
+        return usersPromise;
+    }
+
+    function mention(name) { return el("span", "sqn-mention", "@" + name.replace(/^@/, "")); }
+
+    var CODE_RE = /crm\[user#(\d+)#[^\]]*\]crm/;
+    function markMentions(body) {
+        body.querySelectorAll("a").forEach(function (a) {
+            var t = a.textContent.trim();
+            if (t.charAt(0) === "@") a.replaceWith(mention(t));
+        });
+        var hasCode = CODE_RE.test(body.textContent);
+        if (!hasCode && body.textContent.indexOf("@") === -1) return;
+        zohoUsers().then(function (users) {
+            var byId = {};
+            users.forEach(function (u) { byId[u.id] = u.name; });
+            var names = users.map(function (u) { return u.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); })
+                .sort(function (a, b) { return b.length - a.length; });
+            // @ grudado em letra antes e e-mail, nao mencao
+            var re = new RegExp(CODE_RE.source + (names.length ? "|(^|[^\\w@.])@(" + names.join("|") + ")(?![\\w])" : ""), "gi");
+            var walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT);
+            var nodes = [];
+            while (walker.nextNode()) if (!walker.currentNode.parentNode.closest(".sqn-mention")) nodes.push(walker.currentNode);
+            nodes.forEach(function (node) {
+                var text = node.nodeValue, frag = null, last = 0, m;
+                re.lastIndex = 0;
+                while ((m = re.exec(text))) {
+                    frag = frag || document.createDocumentFragment();
+                    var start = m.index + (m[2] ? m[2].length : 0);
+                    frag.appendChild(document.createTextNode(text.slice(last, start)));
+                    frag.appendChild(mention(m[1] ? (byId[m[1]] || "usuário do Zoho") : m[3]));
+                    last = m.index + m[0].length;
+                }
+                if (!frag) return;
+                frag.appendChild(document.createTextNode(text.slice(last)));
+                node.replaceWith(frag);
+            });
+        });
     }
 
     /** Excluir pede confirmacao no proprio cartao, dizendo qual nota some. */
@@ -577,7 +663,6 @@
         var bar = item.querySelector(".sqn-actions");
         bar.textContent = "";
         bar.classList.remove("sqn-confirm");
-        if (n.$is_shared_to_client) bar.appendChild(el("span", "sqn-badge", "Compartilhada com o cliente"));
         if (n.$editable === false) return; // o Zoho nao deixa este usuario mexer: nada a oferecer
         bar.appendChild(el("span", "sqn-spacer"));
         var edit = button("sqn-link-btn", "Editar", null);
@@ -600,6 +685,8 @@
             if (editing && editing.id === n.id) item.classList.add("sqn-note-editing");
             var meta = el("div", "sqn-meta");
             meta.appendChild(el("span", "sqn-author", noteAuthor(n)));
+            // fica no cabecalho do cartao: confirmar exclusao ou editar nao some com o selo
+            if (n.$is_shared_to_client) meta.appendChild(el("span", "sqn-badge", "Visível no portal do cliente"));
             meta.appendChild(el("time", "sqn-date", fmtDate(n.Created_Time)));
             item.appendChild(meta);
             if (n.Note_Title) item.appendChild(el("div", "sqn-note-title", n.Note_Title));

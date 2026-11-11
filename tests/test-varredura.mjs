@@ -84,6 +84,26 @@ const espera = (page, fn, arg) => page.waitForFunction(fn, arg, { timeout: 4000 
     });
     ok(await espera(page, () => document.querySelectorAll(".quick-replies-btn").length === 2), "editor de nota com rodape tardio ganha a bolinha");
 
+    // colar texto grande numa nota (template com muitos campos): nada da extensao entra no editor
+    const antes = await conta(page);
+    const ms = await page.evaluate(async () => {
+        const ed = document.createElement("div");
+        ed.contentEditable = "true";
+        ed.id = "nota";
+        document.body.appendChild(ed);
+        const linhas = [];
+        for (let i = 0; i < 400; i++) linhas.push("<div>Field " + (i % 12) + "</div><div>valor " + i + "</div>");
+        const t0 = performance.now();
+        for (let k = 0; k < 20; k++) { ed.insertAdjacentHTML("beforeend", linhas.join("")); await new Promise((r) => setTimeout(r, 50)); }
+        await new Promise((r) => setTimeout(r, 1500));
+        return performance.now() - t0;
+    });
+    const dentro = await page.evaluate(() => document.querySelectorAll("#nota .zfh-icon, #nota .zoho-copy-btn, #nota .zoho-wa-btn").length);
+    ok(dentro === 0, "colar na nota: nenhum botao da extensao entra no texto do editor", String(dentro));
+    const depois = await conta(page);
+    ok(depois.hist === antes.hist, "linha colada igual ao nome de um campo nao vira relogio", JSON.stringify([antes, depois]));
+    await page.evaluate(() => document.getElementById("nota").remove());
+
     // aba escondida: nada roda; ao voltar, tudo aparece
     await page.evaluate(() => {
         Object.defineProperty(document, "hidden", { configurable: true, get: () => true });

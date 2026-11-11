@@ -52,7 +52,8 @@
 
     function queueNode(node) {
         var el = node.nodeType === 1 ? node : node.parentElement; // texto novo: olha o elemento que o recebeu
-        if (!el || !el.isConnected || el.closest(OURS)) return;
+        // Texto sendo digitado ou colado num editor nao e tela do Zoho: nada a varrer ali.
+        if (!el || !el.isConnected || el.isContentEditable || el.closest(OURS)) return;
         pendingRoots.add(el);
     }
 
@@ -99,7 +100,8 @@
             if (up) found.add(up);
             r.querySelectorAll(sel).forEach(function (n) { found.add(n); });
         });
-        return Array.from(found);
+        // Nada da extensao entra no texto de um editor (nota sendo escrita).
+        return Array.from(found).filter(function (n) { return !n.isContentEditable; });
     }
 
     init();
@@ -127,7 +129,6 @@
 
         scheduleScan();
         setTimeout(cacheZohoAuthorName, 2000);
-        setInterval(cacheZohoAuthorName, 30000);
 
         // O painel e `position: fixed` ancorado no botao: se a janela muda de
         // tamanho ou a pagina rola, a ancora se move e o painel precisa
@@ -136,15 +137,28 @@
         window.addEventListener('scroll', scheduleReposition, { passive: true, capture: true });
     }
 
-    // Grava so quando muda: cada gravacao acorda os outros contextos da extensao.
-    var lastAuthor = null;
-    function cacheZohoAuthorName() {
-        if (document.hidden) return;
-        var author = getZohoAuthor();
-        if (author && SQ && author !== lastAuthor) {
-            lastAuthor = author;
-            SQ.storageSet({ zohoAuthor: author });
+    // Usuario logado pela API (GET /users?type=CurrentUser). Raspar a tela pegava
+    // o nome de outra pessoa (autor de nota, dono do registro) e assinava a resposta errado.
+    var authorPromise = null;
+    function currentAuthor() {
+        if (!authorPromise) {
+            authorPromise = globalThis.SQZoho.get('/users?type=CurrentUser').then(function (b) {
+                var u = b.users && b.users[0];
+                var name = u && (u.full_name || [u.first_name, u.last_name].filter(Boolean).join(' '));
+                return name || getZohoAuthor();
+            }).catch(function () { authorPromise = null; return getZohoAuthor(); });
         }
+        return authorPromise;
+    }
+
+    // Grava so quando muda: cada gravacao acorda os outros contextos da extensao.
+    function cacheZohoAuthorName() {
+        currentAuthor().then(function (author) {
+            if (!author || !SQ) return;
+            SQ.storageGet(['zohoAuthor']).then(function (r) {
+                if (!r || r.zohoAuthor !== author) SQ.storageSet({ zohoAuthor: author });
+            });
+        });
     }
 
     function checkForNoteEditor(roots) {
@@ -1158,7 +1172,7 @@
     SQ.onMessage(function (request) {
         if (!request) return undefined;
         if (request.action === 'getAuthor') {
-            return { author: getZohoAuthor() };
+            return currentAuthor().then(function (a) { return { author: a }; });
         }
         if (request.action === 'fillText') {
             if (!globalThis.SQPlaceholders) return null;

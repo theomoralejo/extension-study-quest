@@ -6,7 +6,9 @@
     var CFG = globalThis.SQConfig;
 
     var editingId = null;
+    var editingAuthor = null; // editar nao troca quem criou a resposta
     var currentAuthor = '';
+    var authorReady = null;   // nome do usuario logado no Zoho, pela aba ativa
     var submitting = false;
 
     document.addEventListener('DOMContentLoaded', function () {
@@ -15,14 +17,15 @@
         document.getElementById('replyForm').addEventListener('submit', handleSubmit);
 
         // Cache primeiro: o nome aparece mesmo se a aba ativa nao for o Zoho.
+        // O cache nunca sobrescreve o nome que a aba do Zoho ja respondeu.
         SQ.storageGet(['zohoAuthor']).then(function (result) {
-            if (result && result.zohoAuthor) {
+            if (result && result.zohoAuthor && !currentAuthor) {
                 currentAuthor = result.zohoAuthor;
             }
         });
 
         // Se a aba ativa for o Zoho, pergunta ao content script o nome atual.
-        SQ.activeTab().then(function (tab) {
+        authorReady = SQ.activeTab().then(function (tab) {
             if (!tab || !tab.url || tab.url.indexOf('zoho') === -1) return;
             return SQ.sendMessageToTab(tab.id, { action: 'getAuthor' }).then(function (response) {
                 if (response && response.author) {
@@ -95,26 +98,27 @@
             return;
         }
 
-        var author = currentAuthor || 'Sistema';
-
-        var replyData = {
-            id: editingId !== null ? editingId : Date.now().toString(),
-            title: title,
-            text: text,
-            category: category,
-            author: author
-        };
-
         var isEditing = editingId !== null;
         var url = isEditing ? CFG.url('/replies/' + editingId) : CFG.url('/replies');
         var method = isEditing ? 'PUT' : 'POST';
+        var id = isEditing ? editingId : Date.now().toString();
 
         setSubmitting(true, isEditing);
 
-        fetch(url, {
-            method: method,
-            headers: CFG.headers(true),
-            body: JSON.stringify(replyData)
+        // Espera o nome do usuario logado: salvar antes dele chegar assinava com o nome em cache.
+        Promise.resolve(authorReady).catch(function () {}).then(function () {
+            var replyData = {
+                id: id,
+                title: title,
+                text: text,
+                category: category,
+                author: (isEditing && editingAuthor) || currentAuthor || 'Sistema'
+            };
+            return fetch(url, {
+                method: method,
+                headers: CFG.headers(true),
+                body: JSON.stringify(replyData)
+            });
         })
             .then(readJsonOrThrow)
             .then(function () {
@@ -144,6 +148,7 @@
 
     function resetForm() {
         editingId = null;
+        editingAuthor = null;
         document.getElementById('replyForm').reset();
         document.getElementById('categoryInputWrap').classList.add('is-hidden');
         document.getElementById('categorySelectWrap').classList.remove('is-hidden');
@@ -302,7 +307,7 @@
             btnCopy.type = 'button';
             btnCopy.className = 'btn-small btn-copy';
             btnCopy.textContent = 'Copiar';
-            btnCopy.title = 'Copiar o texto inteiro da resposta';
+            btnCopy.title = 'Copiar título e texto da resposta';
             btnCopy.addEventListener('click', function () { copyReply(reply, btnCopy); });
 
             actions.appendChild(btnCopy);
@@ -360,16 +365,17 @@
     }
 
     /**
-     * Copia o texto inteiro com os #campos ja trocados pelos dados do registro
+     * Copia titulo + texto, com os #campos ja trocados pelos dados do registro
      * aberto na aba. Sem registro, copia como esta e avisa.
      */
     function copyReply(reply, btn) {
-        var raw = reply.text || '';
-        if (!TOKEN_RE.test(raw)) { writeClipboard(raw, btn, null); return; }
+        var raw = [reply.title || '', reply.text || ''];
+        var join = function (t) { return t[0] ? t[0] + '\n\n' + t[1] : t[1]; };
+        if (!TOKEN_RE.test(raw.join(' '))) { writeClipboard(join(raw), btn, null); return; }
         btn.textContent = 'Copiando...';
-        fillFromTab([raw]).then(function (res) {
-            if (res.status === 'ok') { writeClipboard(res.texts[0], btn, null); return; }
-            writeClipboard(raw, btn, 'Copiado sem os dados do registro. ' + fillProblem(res));
+        fillFromTab(raw).then(function (res) {
+            if (res.status === 'ok') { writeClipboard(join(res.texts), btn, null); return; }
+            writeClipboard(join(raw), btn, 'Copiado sem os dados do registro. ' + fillProblem(res));
         });
     }
 
@@ -516,7 +522,7 @@
     /** `#texto` logo antes do cursor, comecando no inicio ou depois de espaco/pontuacao. */
     function tokenAtCaret(ta) {
         var before = ta.value.slice(0, ta.selectionStart);
-        var m = before.match(/(^|[^A-Za-z0-9_#])#([A-Za-z0-9_]*)$/);
+        var m = before.match(/(^|[^A-Za-z0-9_#@])#([A-Za-z0-9_]*)$/); // # depois de letra ou @ (e-mail) nao e campo
         return m ? { query: m[2], start: before.length - m[2].length - 1 } : null;
     }
 
@@ -535,11 +541,14 @@
         var ta = document.getElementById('replyText');
         var box = document.getElementById('fieldSuggest');
 
+        var seq = 0, blurTimer = null;
         function update() {
             var tok = tokenAtCaret(ta);
+            var mine = ++seq;
             if (!tok) { closeSuggest(); return; }
             getFields().then(function (res) {
-                if (tokenAtCaret(ta) === null) return; // cursor saiu do # enquanto carregava
+                // so a tecla mais recente desenha a lista: resposta atrasada de "#d" nao redesenha "#de"
+                if (mine !== seq || tokenAtCaret(ta) === null) return;
                 suggest.start = tok.start;
                 suggest.items = res && res.fields ? rankFields(res.fields, tok.query) : [];
                 suggest.active = 0;
@@ -552,7 +561,9 @@
 
         ta.addEventListener('input', update);
         ta.addEventListener('click', update);
-        ta.addEventListener('blur', function () { setTimeout(closeSuggest, 150); });
+        // fechar ao sair do campo, mas nao se o foco ja voltou (o atraso deixa o clique na lista chegar)
+        ta.addEventListener('blur', function () { blurTimer = setTimeout(closeSuggest, 150); });
+        ta.addEventListener('focus', function () { clearTimeout(blurTimer); });
         ta.addEventListener('keydown', function (e) {
             if (!suggest.open) return;
             if (e.key === 'Escape') { e.preventDefault(); closeSuggest(); return; }
@@ -656,6 +667,7 @@
      * so para reencontrar o mesmo registro que ja estava em memoria.
      */
     function editReply(reply) {
+        editingAuthor = reply.author || null;
         document.getElementById('replyTitle').value = reply.title || '';
         document.getElementById('replyText').value = reply.text || '';
 

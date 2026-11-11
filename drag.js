@@ -4,9 +4,11 @@
  * A posicao fica no storage da extensao (uma chave por painel), gravada so ao
  * soltar: arrastar nao gera escrita por movimento. Toda posicao e limitada a
  * viewport, inclusive a salva quando a janela encolheu desde entao.
- * Duplo clique no cabecalho volta o painel ao lugar padrao.
+ * Duplo clique no cabecalho volta o painel ao lugar padrao. O painel tambem
+ * pode ser encostado numa borda (`dock`) e redimensionado pelos cantos de baixo
+ * (`attachResize`). `el.dataset.sqDock` diz onde ele esta: right, left ou "" (solto).
  *
- * Expoe `globalThis.SQDrag = { attach, attachEdge, restore, clamp, saved, ready }`.
+ * Expoe `globalThis.SQDrag = { attach, attachEdge, attachResize, dock, restore, clamp, saved, ready }`.
  */
 (function () {
     'use strict';
@@ -14,7 +16,8 @@
     var SQ = globalThis.SQBrowser;
     var MARGIN = 12;
     var KEY = 'sqPanelPos';
-    var cache = null; // { [nome]: { left, top, height? } }
+    var cache = null; // { [nome]: { left, top, height?, width? } | { dock, height?, width? } }
+    var MIN_W = 288, MIN_H = 240;
     var loading = SQ.storageGet([KEY]).then(function (r) { cache = (r && r[KEY]) || {}; return cache; });
 
     function viewport() {
@@ -22,8 +25,9 @@
     }
 
     /** Coloca `el` em (left, top) sem sair da tela. */
-    function place(el, left, top, height) {
+    function place(el, left, top, height, width) {
         var vp = viewport();
+        if (width) el.style.width = Math.min(width, vp.w - 2 * MARGIN) + 'px';
         if (height) el.style.height = Math.min(height, vp.h - 2 * MARGIN) + 'px';
         var r = el.getBoundingClientRect();
         left = Math.max(MARGIN, Math.min(left, vp.w - r.width - MARGIN));
@@ -32,7 +36,30 @@
         el.style.top = top + 'px';
         el.style.right = 'auto';
         el.style.bottom = 'auto';
+        el.dataset.sqDock = '';
         return { left: left, top: top };
+    }
+
+    /** Encosta `el` de cima a baixo na borda `side`; right sem largura nem altura e o lugar padrao do CSS. */
+    function applyDock(el, side, height, width) {
+        var vp = viewport();
+        ['left', 'top', 'right', 'bottom', 'height', 'width'].forEach(function (p) { el.style[p] = ''; });
+        if (width) el.style.width = Math.min(width, vp.w - 2 * MARGIN) + 'px';
+        if (height) el.style.height = Math.min(height, vp.h - 2 * MARGIN) + 'px';
+        if (side === 'left') { el.style.left = MARGIN + 'px'; el.style.right = 'auto'; }
+        el.dataset.sqDock = side;
+    }
+
+    function apply(el, pos) {
+        if (pos.dock) applyDock(el, pos.dock, pos.height, pos.width);
+        else place(el, pos.left, pos.top, pos.height, pos.width);
+    }
+
+    /** Leva o painel direto para a borda `side`, mantendo a largura escolhida. */
+    function dock(el, name, side) {
+        var width = el.style.width ? el.getBoundingClientRect().width : null;
+        applyDock(el, side, null, width);
+        save(name, side === 'right' && !width ? null : { dock: side, width: width || undefined });
     }
 
     /** Reaplica a posicao salva de `name` em `el`. Resolve true se havia uma. */
@@ -40,7 +67,7 @@
         return loading.then(function () {
             var pos = cache[name];
             if (!pos || !el.isConnected) return false;
-            place(el, pos.left, pos.top, pos.height);
+            apply(el, pos);
             return true;
         });
     }
@@ -48,7 +75,7 @@
     /** Depois de um resize: puxa de volta para a tela o painel ja posicionado. */
     function clamp(el, name) {
         var pos = cache && cache[name];
-        if (pos && el.isConnected && !el.hidden) place(el, pos.left, pos.top, pos.height);
+        if (pos && el.isConnected && !el.hidden) apply(el, pos);
     }
 
     function save(name, pos) {
@@ -82,8 +109,9 @@
             handle.setPointerCapture(e.pointerId);
             el.classList.add('sq-dragging');
 
+            var width = el.style.width ? r.width : null;
             function move(ev) {
-                last = place(el, ev.clientX - dx, ev.clientY - dy, height);
+                last = place(el, ev.clientX - dx, ev.clientY - dy, height, width);
                 if (opts.onMove) opts.onMove();
             }
             function up() {
@@ -93,6 +121,7 @@
                 el.classList.remove('sq-dragging');
                 if (!last) return; // so clicou: nada a gravar
                 if (height) last.height = height;
+                if (width) last.width = width;
                 save(name, last);
             }
             handle.addEventListener('pointermove', move);
@@ -102,7 +131,7 @@
 
         handle.addEventListener('dblclick', function (e) {
             if (e.target.closest('button, input, select, textarea, a, label')) return;
-            ['left', 'top', 'right', 'bottom', 'height'].forEach(function (p) { el.style[p] = ''; });
+            applyDock(el, 'right');
             save(name, null);
             if (opts.onReset) opts.onReset();
         });
@@ -147,8 +176,50 @@
         }, true);
     }
 
+    /**
+     * Canto de baixo que estica o painel na diagonal: `corner` left segura a borda
+     * direita (cresce para a esquerda), right segura a esquerda. Encostado, o painel
+     * continua encostado; so a largura e a altura mudam. Grava ao soltar.
+     */
+    function attachResize(el, handle, name, corner, opts) {
+        opts = opts || {};
+        handle.addEventListener('pointerdown', function (e) {
+            if (e.button !== 0) return;
+            var r = el.getBoundingClientRect(), vp = viewport();
+            var x0 = e.clientX, y0 = e.clientY, side = el.dataset.sqDock || '', done = null;
+            e.preventDefault();
+            handle.setPointerCapture(e.pointerId);
+            el.classList.add('sq-dragging');
+            function move(ev) {
+                var dw = corner === 'left' ? x0 - ev.clientX : ev.clientX - x0;
+                var room = corner === 'left' ? r.right - MARGIN : vp.w - MARGIN - r.left;
+                var w = Math.max(MIN_W, Math.min(r.width + dw, room));
+                var h = Math.max(MIN_H, Math.min(r.height + ev.clientY - y0, vp.h - MARGIN - r.top));
+                if (side) {
+                    applyDock(el, side, h, w);
+                    done = { dock: side, height: h, width: w };
+                } else {
+                    done = place(el, corner === 'left' ? r.right - w : r.left, r.top, h, w);
+                    done.height = h;
+                    done.width = w;
+                }
+                if (opts.onMove) opts.onMove();
+            }
+            function up() {
+                handle.removeEventListener('pointermove', move);
+                handle.removeEventListener('pointerup', up);
+                handle.removeEventListener('pointercancel', up);
+                el.classList.remove('sq-dragging');
+                if (done) save(name, done);
+            }
+            handle.addEventListener('pointermove', move);
+            handle.addEventListener('pointerup', up);
+            handle.addEventListener('pointercancel', up);
+        });
+    }
+
     /** Posicao salva de `name`, ou null. So vale depois de `ready`. */
     function saved(name) { return (cache && cache[name]) || null; }
 
-    globalThis.SQDrag = { attach: attach, attachEdge: attachEdge, restore: restore, clamp: clamp, saved: saved, ready: loading, MARGIN: MARGIN };
+    globalThis.SQDrag = { attach: attach, attachEdge: attachEdge, attachResize: attachResize, dock: dock, restore: restore, clamp: clamp, saved: saved, ready: loading, MARGIN: MARGIN };
 })();

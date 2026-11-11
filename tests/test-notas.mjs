@@ -75,6 +75,10 @@ async function abrir(notas, { postStatus = 201 } = {}) {
             estado.notas.push({ id: "n" + estado.posts.length, Note_Content: body.data[0].Note_Content, Note_Title: body.data[0].Note_Title, $is_shared_to_client: !!body.data[0].$is_shared_to_client, Created_Time: "2026-11-06T16:0" + estado.posts.length + ":00-03:00", Created_By: { name: "Mauro" } });
             return route.fulfill({ status: 201, json: { data: [{ code: "SUCCESS", details: { id: "n9" }, status: "success" }] } });
         }
+        if (url.pathname.endsWith("/users")) {
+            estado.users = (estado.users || 0) + 1;
+            return route.fulfill({ json: { users: [{ id: "77", full_name: "Mauro Silva" }, { id: "78", full_name: "Ana" }] } });
+        }
         return route.fulfill({ status: 404, json: {} });
     });
     await page.goto(`${BASE}/crm/org1/tab/Potentials/123`);
@@ -178,7 +182,7 @@ const NOTAS = [
     ok(hrefs.join(",") === ",https://studyquest.co.uk" || (hrefs[0] === null && hrefs[1] === "https://studyquest.co.uk"), "link javascript: perde o href; https fica", JSON.stringify(hrefs));
     await page.waitForTimeout(200);
     ok(!estado.xss && await rica.locator("script").count() === 0, "script de nota nao entra nem executa");
-    ok(await rica.locator(".sqn-badge").isVisible(), "nota compartilhada mostra o selo 'Compartilhada com o cliente'");
+    ok(await rica.locator(".sqn-meta .sqn-badge").isVisible(), "nota do portal do cliente mostra o selo no cabecalho do cartao");
     const semPerm = page.locator(".sqn-note", { hasText: "Sem permissao" });
     ok(await semPerm.locator("button").count() === 0, "nota com $editable false nao oferece Editar/Excluir");
 
@@ -245,6 +249,82 @@ const NOTAS = [
     await alvo.locator("button", { hasText: "Excluir nota" }).click();
     await page.waitForFunction(() => !document.body.textContent.includes("Rica editada") || document.querySelectorAll(".sqn-note").length === 3);
     ok(estado.dels.join() === "r1", "Excluir nota faz DELETE /Notes/{id}", estado.dels.join());
+    await page.close();
+}
+
+// ---- mencoes, selo do portal, setas de encostar e cantos de tamanho ----
+{
+    const MENC = [
+        { id: "m1", Note_Content: "Falar com @Mauro Silva amanhã. Copiar contato@ana.com", $is_shared_to_client: true, Created_Time: "2026-11-03T09:00:00-03:00", Created_By: { name: "Ana" } },
+        { id: "m2", Note_Content: 'Oi <a href="https://crm.zoho.com/crm/org1/settings/users/78">@Ana</a> e crm[user#77#5725767000000000001]crm', Created_Time: "2026-11-02T09:00:00-03:00", Created_By: { name: "Ana" } }
+    ];
+    const { page } = await abrir(MENC);
+    await page.click(".sqn-tab");
+    await page.waitForSelector(".sqn-note");
+    await page.waitForFunction(() => document.querySelectorAll(".sqn-mention").length >= 3, null, { timeout: 3000 }).catch(() => {});
+    const m = await page.$$eval(".sqn-mention", (els) => els.map((e) => [e.textContent, getComputedStyle(e).fontWeight, getComputedStyle(e).color, !!e.closest("a")]));
+    ok(m.map((x) => x[0]).join("|") === "@Mauro Silva|@Ana|@Mauro Silva", "mencao vira @Nome (texto, link do Zoho e codigo crm[user#id])", JSON.stringify(m));
+    ok(m.every((x) => Number(x[1]) >= 700 && x[2] === "rgb(0, 103, 166)" && !x[3]), "mencao em negrito, azul e sem link", JSON.stringify(m));
+    const corpo1 = await page.locator(".sqn-note").first().locator(".sqn-body").textContent();
+    ok(corpo1.includes("contato@ana.com") && (await page.locator(".sqn-note").first().locator(".sqn-mention").count()) === 1, "e-mail nao vira mencao", corpo1);
+
+    const card = page.locator(".sqn-note").first();
+    await card.locator("button", { hasText: "Excluir" }).click();
+    ok(await card.locator(".sqn-badge").isVisible(), "selo do portal continua visivel durante a confirmacao de excluir");
+    await card.locator("button", { hasText: "Cancelar" }).click();
+
+    const vis = async () => [await page.isVisible('[aria-label="Encostar o painel na esquerda"]'), await page.isVisible('[aria-label="Encostar o painel na direita"]'), await page.isVisible(".sqn-grip-left"), await page.isVisible(".sqn-grip-right")].join();
+    ok(await vis() === "true,false,true,false", "encostado a direita: so seta para a esquerda e canto esquerdo", await vis());
+    await page.click('[aria-label="Encostar o painel na esquerda"]');
+    const esq = await page.$eval(".sqn-panel", (e) => e.getBoundingClientRect());
+    ok(esq.left === 12 && esq.top === 12 && esq.bottom === 788, "seta leva o painel direto para a esquerda, de cima a baixo", JSON.stringify(esq));
+    ok(await vis() === "false,true,false,true", "encostado a esquerda: so seta para a direita e canto direito", await vis());
+    const tabL = await page.$eval(".sqn-tab", (e) => e.getBoundingClientRect().left);
+    ok(tabL >= esq.right - 1, "aba fica do lado de fora do painel encostado a esquerda", `aba=${tabL} painel.right=${esq.right}`);
+
+    // canto direito estica na diagonal; continua encostado e lembra o tamanho
+    const g = await page.$eval(".sqn-grip-right", (e) => { const r = e.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; });
+    await page.mouse.move(g.x, g.y);
+    await page.mouse.down();
+    await page.mouse.move(g.x + 200, g.y - 300, { steps: 5 });
+    await page.mouse.up();
+    const grande = await page.$eval(".sqn-panel", (e) => e.getBoundingClientRect());
+    ok(Math.round(grande.width - esq.width) === 200 && Math.round(esq.height - grande.height) === 300 && grande.left === 12, "canto direito muda largura e altura juntas, encostado", JSON.stringify(grande));
+    const salvo = await page.evaluate(() => SQDrag.saved("notes"));
+    ok(salvo && salvo.dock === "left" && Math.round(salvo.width) === Math.round(grande.width), "tamanho e lado ficam salvos", JSON.stringify(salvo));
+
+    await page.click('[aria-label="Encostar o painel na direita"]');
+    const dir = await page.$eval(".sqn-panel", (e) => e.getBoundingClientRect());
+    ok(Math.round(dir.right) === 1280 - 12 && Math.round(dir.width) === Math.round(grande.width), "seta para a direita encosta mantendo a largura escolhida", JSON.stringify(dir));
+    const tabR = await page.$eval(".sqn-tab", (e) => e.getBoundingClientRect().right);
+    ok(tabR <= dir.left + 1, "aba acompanha o painel largo encostado a direita", `aba.right=${tabR} painel.left=${dir.left}`);
+
+    // nao passa da tela: canto esquerdo puxado para fora dela
+    const g2 = await page.$eval(".sqn-grip-left", (e) => { const r = e.getBoundingClientRect(); return { x: r.left + 5, y: r.top + 5 }; });
+    await page.mouse.move(g2.x, g2.y);
+    await page.mouse.down();
+    await page.mouse.move(-5000, 5000, { steps: 3 });
+    await page.mouse.up();
+    const max = await page.$eval(".sqn-panel", (e) => e.getBoundingClientRect());
+    ok(max.left >= 12 && max.bottom <= 800 - 12 && Math.round(max.right) === 1280 - 12, "esticar nao passa da tela", JSON.stringify(max));
+
+    // solto: as duas setas e os dois cantos
+    const h = await page.$eval(".sqn-head", (e) => { const r = e.getBoundingClientRect(); return { x: r.left + 60, y: r.top + 20 }; });
+    await page.mouse.move(h.x, h.y);
+    await page.mouse.down();
+    await page.mouse.move(h.x - 150, h.y + 40, { steps: 5 });
+    await page.mouse.up();
+    ok(await vis() === "true,true,true,true", "solto: as duas setas e os dois cantos", await vis());
+
+    // fechar e abrir de novo restaura do que foi salvo (o mesmo caminho de recarregar a pagina)
+    await page.click('[aria-label="Encostar o painel na esquerda"]');
+    const antes = await page.$eval(".sqn-panel", (e) => e.getBoundingClientRect().width);
+    await page.click('[aria-label="Recolher painel de notas"]');
+    await page.$eval(".sqn-panel", (e) => ["left", "right", "width", "height", "top", "bottom"].forEach((k) => { e.style[k] = ""; }));
+    await page.click(".sqn-tab");
+    await page.waitForTimeout(300);
+    const depois = await page.$eval(".sqn-panel", (e) => e.getBoundingClientRect());
+    ok(depois.left === 12 && Math.round(depois.width) === Math.round(antes), "reabrir restaura o lado e a largura salvos", JSON.stringify(depois));
     await page.close();
 }
 

@@ -249,6 +249,7 @@
         while (!(step = it.next()).done) {
             var node = step.value;
             if (node.dataset && node.dataset.zfh) continue;
+            if (node.isContentEditable) continue; // texto de nota sendo escrita/colada, nao rotulo de campo
             // elemento cujo texto proprio e exatamente o nome de um campo
             var own = ownText(node);
             if (!own || own.length > 200) continue;

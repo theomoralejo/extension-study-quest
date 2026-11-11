@@ -77,7 +77,7 @@ ok((await ext.textContent("#fillNote")).includes("dados do registro aberto"), "p
 await ext.click(".btn-copy");
 await ext.waitForFunction(() => document.querySelector(".btn-copy").textContent === "Copiado", null, { timeout: 5000 }).catch(() => {});
 const clip = await ext.evaluate(() => navigator.clipboard.readText());
-ok(clip === "Maria Silva teste []", "Copiar no popup instalado leva os dados do Deal", JSON.stringify(clip));
+ok(clip === "teste\n\nMaria Silva teste []", "Copiar no popup instalado leva titulo e os dados do Deal", JSON.stringify(clip));
 
 // 3. aba do Zoho sem o content script (aberta antes de atualizar a extensao): manda recarregar
 await deal.goto("https://crm.zoho.com/home/sem-content-script");

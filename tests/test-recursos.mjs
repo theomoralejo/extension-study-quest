@@ -267,6 +267,47 @@ async function abrir(urlPath, { recordStatus = 200, ctx = null } = {}) {
     await context.close();
 }
 
+// ---------- 3b. popup: autor e o usuario logado no Zoho, nao o cache ----------
+{
+    const context = await browser.newContext({ viewport: { width: 400, height: 700 } });
+    const p = await context.newPage();
+    await p.addInitScript(() => {
+        window.__envios = [];
+        const replies = [{ id: "9", title: "Antiga", text: "x", category: "Sales", author: "Carina" }];
+        window.fetch = (url, o) => {
+            if (o && o.method && o.method !== "GET") window.__envios.push({ method: o.method, body: JSON.parse(o.body || "{}") });
+            const out = o && o.method && o.method !== "GET" ? {} : replies;
+            return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(out), text: () => Promise.resolve(JSON.stringify(out)) });
+        };
+        window.chrome = {
+            runtime: { id: "t", getURL: (x) => x },
+            // cache com o nome errado, que chega antes da aba responder
+            storage: { local: { get: () => Promise.resolve({ zohoAuthor: "Ricarth" }), set: () => Promise.resolve() } },
+            tabs: {
+                query: () => Promise.resolve([{ id: 1, url: "https://crm.zoho.com/crm/org1/tab/Potentials/123" }]),
+                sendMessage: (id, m) => m.action === "getAuthor"
+                    ? new Promise((r) => setTimeout(() => r({ author: "Mauro Ribeiro" }), 400))
+                    : Promise.resolve(m.action === "fillText" ? { status: "ok", texts: m.texts } : null)
+            }
+        };
+    });
+    await p.goto(BASE + "/popup.html");
+    await p.waitForSelector(".reply-item");
+    await p.fill("#replyTitle", "Nova");
+    await p.fill("#replyText", "Texto");
+    await p.click("#submitBtn"); // antes da aba responder: espera o nome
+    await p.waitForFunction(() => window.__envios.length === 1, null, { timeout: 3000 }).catch(() => {});
+    const novo = await p.evaluate(() => window.__envios[0]);
+    ok(novo && novo.method === "POST" && novo.body.author === "Mauro Ribeiro", "resposta nova leva o usuario logado no Zoho, nao o nome em cache", JSON.stringify(novo));
+    await p.click(".reply-item .btn-edit");
+    await p.fill("#replyText", "Texto editado");
+    await p.click("#submitBtn");
+    await p.waitForFunction(() => window.__envios.length === 2, null, { timeout: 3000 }).catch(() => {});
+    const ed = await p.evaluate(() => window.__envios[1]);
+    ok(ed && ed.method === "PUT" && ed.body.author === "Carina", "editar mantem quem criou a resposta", JSON.stringify(ed));
+    await context.close();
+}
+
 // ---------- 4. popup: Copiar + seletor de campos ----------
 {
     const context = await browser.newContext({ viewport: { width: 400, height: 700 }, permissions: ["clipboard-read", "clipboard-write"] });
@@ -292,7 +333,7 @@ async function abrir(urlPath, { recordStatus = 200, ctx = null } = {}) {
     ok(ordem.join(",") === "Copiar,Editar,Excluir", "Copiar ao lado de Editar e Excluir", ordem.join(","));
     await p.click(".btn-copy");
     const clip = await p.evaluate(() => navigator.clipboard.readText());
-    ok(clip === "Linha 1\nLinha 2 com Maria Silva", "copia o texto inteiro ja com os dados do deal", JSON.stringify(clip));
+    ok(clip === "Lead Handover\n\nLinha 1\nLinha 2 com Maria Silva", "copia titulo e texto ja com os dados do deal", JSON.stringify(clip));
     await p.waitForFunction(() => document.querySelector(".btn-copy").textContent === "Copiado");
     ok(true, "botao confirma que copiou");
     await p.waitForTimeout(1700);
@@ -302,7 +343,7 @@ async function abrir(urlPath, { recordStatus = 200, ctx = null } = {}) {
     await p.waitForFunction(() => document.querySelector(".btn-copy").textContent === "Copiado");
     const clipCru = await p.evaluate(() => navigator.clipboard.readText());
     const alerta = await p.textContent("#alert");
-    ok(clipCru.includes("#Deal_Name") && alerta.includes("Abra um Deal"), "sem deal aberto: copia como esta e avisa por que", alerta);
+    ok(clipCru.startsWith("Lead Handover\n\n") && clipCru.includes("#Deal_Name") && alerta.includes("Abra um Deal"), "sem deal aberto: copia como esta e avisa por que", alerta);
     await p.evaluate(() => { window.__semRegistro = false; });
 
     await p.fill("#replyText", "Oi, tudo bem?");

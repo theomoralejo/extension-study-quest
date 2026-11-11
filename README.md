@@ -71,15 +71,21 @@ npm test
 - `test-recursos.mjs` — recursos da 1.7.0: `#Campo` trocado pelo valor do
   registro (e hashtag comum preservada), painéis arrastáveis com posição
   lembrada após recarregar, painel de notas que continua aberto com o rascunho,
-  botão Copiar e seletor de campos do popup.
+  botão Copiar (título + texto) e seletor de campos do popup; autor da resposta
+  vem do usuário logado no Zoho (`/users?type=CurrentUser`), não do cache, e
+  editar mantém o autor original.
 - `e2e-extensao.mjs` — a extensão instalada de verdade num Chromium, com o
   `crm.zoho.com` simulado: popup → aba do Deal → texto preenchido, sem
   `chrome.*` falso. Pega o que só quebra instalado.
 - `test-varredura.mjs` — a varredura incremental pega campo, telefone e editor
-  que chegam depois, não faz nada em aba de fundo e não regrava o storage.
+  que chegam depois, não faz nada em aba de fundo e não regrava o storage; texto
+  colado num editor (`contenteditable`) não recebe ícone nenhum.
 - `bench-desempenho.mjs` — mede o JS gasto em 10 s de página viva, com e sem a
   extensão (`node tests/bench-desempenho.mjs [pasta-da-extensao]`). 1.6.0:
   ~3.900 ms; 1.7.0: ~3 ms.
+- `test-notas.mjs` — painel de notas: lista, texto rico, editar/excluir,
+  menções `@` (texto, link do Zoho e `crm[user#id]crm`; e-mail não vira
+  menção), selo do portal do cliente, setas de encostar e cantos de tamanho.
 - `test-popup.mjs` — carrega `popup.html` **sem `chrome`/`browser` definidos**,
   provando que a camada de compatibilidade degrada em vez de lançar, e checa
   que nada estoura a largura em 320/390/400px.
