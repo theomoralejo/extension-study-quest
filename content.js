@@ -552,6 +552,7 @@
             return;
         }
 
+        var previews = [];
         filteredReplies.forEach(function (reply) {
             var item = document.createElement('div');
             item.className = 'quick-reply-item';
@@ -570,6 +571,7 @@
             var text = document.createElement('div');
             text.className = 'quick-reply-text';
             text.textContent = reply.text || '';
+            previews.push({ title: title.firstChild, text: text, reply: reply });
 
             var author = document.createElement('div');
             author.className = 'quick-reply-author';
@@ -604,6 +606,24 @@
         // A altura mudou: reancorar ja, no mesmo quadro. Adiar para o proximo
         // quadro deixava o painel crescido, por um quadro, vazando pela borda de baixo.
         repositionNow();
+        previewFilled(previews);
+    }
+
+    /** A lista mostra o que sera inserido: #Campo ja com o valor do registro aberto. Uma leitura so para todos. */
+    function previewFilled(previews) {
+        var P = globalThis.SQPlaceholders;
+        if (!P || !previews.length) return;
+        var texts = [];
+        previews.forEach(function (p) { texts.push(p.reply.title || '', p.reply.text || ''); });
+        P.fillAll(texts).then(function (r) {
+            if (r.status !== 'ok') return;
+            previews.forEach(function (p, i) {
+                if (!p.text.isConnected) return; // lista ja redesenhada por outra busca
+                p.title.nodeValue = r.texts[2 * i];
+                p.text.textContent = r.texts[2 * i + 1];
+            });
+            repositionNow();
+        });
     }
 
     function handleSearch() {

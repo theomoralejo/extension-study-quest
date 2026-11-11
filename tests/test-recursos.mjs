@@ -239,6 +239,9 @@ async function abrir(urlPath, { recordStatus = 200, ctx = null } = {}) {
     const c = await box(".quick-replies-panel");
     ok(Math.abs(c.left - b.left) <= 1 && Math.abs(c.top - b.top) <= 1, "reabrir lembra a posicao arrastada", JSON.stringify(c));
 
+    await p.waitForFunction(() => document.querySelector(".quick-reply-text").textContent === "Olá Maria Silva", null, { timeout: 3000 }).catch(() => {});
+    ok((await p.textContent(".quick-reply-text")) === "Olá Maria Silva", "lista do painel no Zoho mostra a resposta ja com os dados do Deal", await p.textContent(".quick-reply-text"));
+
     // inserir com #Campo: chega trocado no editor do Zoho
     await p.click(".quick-reply-item");
     await p.waitForFunction(() => document.querySelector(".lyteEditorMainDiv").textContent.includes("Olá"));
