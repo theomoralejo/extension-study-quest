@@ -583,8 +583,12 @@
                 var target = currentInsert || insertReplyIntoEditor;
                 var P = globalThis.SQPlaceholders;
                 if (!P) { target(reply.title, reply.text); return; }
-                // #Campo vira o valor do registro aberto; sem registro ou em falha, vai o texto como esta.
-                Promise.all([P.fill(reply.title), P.fill(reply.text)]).then(function (v) { target(v[0], v[1]); });
+                // #Campo vira o valor do registro aberto; em falha vai o texto como esta e a tela diz por que.
+                P.fillAll([reply.title, reply.text]).then(function (r) {
+                    target(r.texts[0], r.texts[1]);
+                    if (r.status === 'erro') showNotification('Os #campos não foram preenchidos: ' + r.error + '. Confira se você está logado no Zoho.', 'error');
+                    if (r.status === 'sem-registro') showNotification('Os #campos só são preenchidos dentro de um registro (Deal, Lead...).', 'error');
+                });
             }
             item.addEventListener('click', insert);
             item.addEventListener('keydown', function (e) {
@@ -1135,6 +1139,10 @@
         if (!request) return undefined;
         if (request.action === 'getAuthor') {
             return { author: getZohoAuthor() };
+        }
+        if (request.action === 'fillText') {
+            if (!globalThis.SQPlaceholders) return null;
+            return globalThis.SQPlaceholders.fillAll(request.texts);
         }
         if (request.action === 'recordFields') {
             if (!globalThis.SQPlaceholders) return null;

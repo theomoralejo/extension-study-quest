@@ -7,7 +7,7 @@
  * pagina de registro, nada e trocado.
  *
  * Registro: GET /{modulo}/{id} (v8; `fields` so e obrigatorio na listagem).
- * Expoe `globalThis.SQPlaceholders = { fields, fill, format, TOKEN }`.
+ * Expoe `globalThis.SQPlaceholders = { fields, fill, fillAll, format, TOKEN }`.
  */
 (function () {
     'use strict';
@@ -53,30 +53,49 @@
         return s;
     }
 
-    /** Troca os #campos de `text` pelos valores do registro aberto. Em falha, devolve o texto intacto. */
-    async function fill(text) {
-        text = text || '';
-        TOKEN.lastIndex = 0;
-        if (!TOKEN.test(text)) return text;
-        var rec;
-        try { rec = await currentRecord(); } catch (e) { return text; }
-        if (!rec) return text;
-        return text.replace(TOKEN, function (all, name) {
-            return Object.prototype.hasOwnProperty.call(rec.data, name) ? format(rec.data[name]) : all;
-        });
+    function meta(mod) {
+        if (!metaCache[mod]) {
+            metaCache[mod] = api().get('/settings/fields?module=' + encodeURIComponent(mod));
+            metaCache[mod].catch(function () { delete metaCache[mod]; });
+        }
+        return metaCache[mod];
     }
+
+    function hasToken(text) { TOKEN.lastIndex = 0; return TOKEN.test(text || ''); }
+
+    /**
+     * Troca os #campos de cada texto pelos valores do registro aberto.
+     * Resolve { texts, status, error }: status 'ok' | 'sem-campos' | 'sem-registro' | 'erro'.
+     * Em falha os textos voltam intactos e o motivo vai em `error`, para a tela avisar.
+     */
+    async function fillAll(texts) {
+        texts = (texts || []).map(function (t) { return t || ''; });
+        if (!texts.some(hasToken)) return { texts: texts, status: 'sem-campos' };
+        var rec;
+        try { rec = await currentRecord(); } catch (e) { return { texts: texts, status: 'erro', error: e.message }; }
+        if (!rec) return { texts: texts, status: 'sem-registro' };
+        // Campo do modulo vazio no registro vira texto vazio; o Zoho pode omiti-lo da resposta.
+        var known = {};
+        try { ((await meta(rec.module.api)).fields || []).forEach(function (f) { known[f.api_name] = 1; }); } catch (e) { /* sem metadados: so os campos presentes */ }
+        return {
+            status: 'ok',
+            texts: texts.map(function (text) {
+                return text.replace(TOKEN, function (all, name) {
+                    if (Object.prototype.hasOwnProperty.call(rec.data, name)) return format(rec.data[name]);
+                    return known[name] ? '' : all;
+                });
+            })
+        };
+    }
+
+    async function fill(text) { return (await fillAll([text])).texts[0]; }
 
     /** Campos do modulo aberto, com o valor deste registro, para o seletor do popup. */
     async function fields() {
         var rec = await currentRecord();
         if (!rec) return null;
-        var mod = rec.module.api;
-        if (!metaCache[mod]) {
-            metaCache[mod] = api().get('/settings/fields?module=' + encodeURIComponent(mod));
-            metaCache[mod].catch(function () { delete metaCache[mod]; });
-        }
-        var meta = await metaCache[mod];
-        var list = (meta.fields || []).filter(function (f) {
+        var m = await meta(rec.module.api);
+        var list = (m.fields || []).filter(function (f) {
             return f.api_name && !SKIP_TYPES[f.data_type] && /^[A-Za-z][A-Za-z0-9_]*$/.test(f.api_name);
         }).map(function (f) {
             return { api: f.api_name, label: f.field_label || f.display_label || f.api_name, value: format(rec.data[f.api_name]) };
@@ -85,5 +104,5 @@
         return { module: rec.module.label, fields: list };
     }
 
-    globalThis.SQPlaceholders = { fields: fields, fill: fill, format: format, TOKEN: TOKEN };
+    globalThis.SQPlaceholders = { fields: fields, fill: fill, fillAll: fillAll, format: format, TOKEN: TOKEN };
 })();

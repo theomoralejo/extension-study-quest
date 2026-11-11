@@ -316,11 +316,31 @@
         });
     }
 
-    /** Copia o texto inteiro; Clipboard API primeiro, textarea + execCommand se ela recusar. */
+    /**
+     * Copia o texto inteiro com os #campos ja trocados pelos dados do registro
+     * aberto na aba. Sem registro, copia como esta e avisa.
+     */
     function copyReply(reply, btn) {
-        var text = reply.text || '';
+        var raw = reply.text || '';
+        if (!/#[A-Za-z][A-Za-z0-9_]*/.test(raw)) { writeClipboard(raw, btn, null); return; }
+        btn.textContent = 'Copiando...';
+        SQ.activeTab().then(function (tab) {
+            if (!tab || !tab.url || tab.url.indexOf('zoho') === -1) return null;
+            return SQ.sendMessageToTab(tab.id, { action: 'fillText', texts: [raw] });
+        }).then(function (res) {
+            if (res && res.status === 'ok') { writeClipboard(res.texts[0], btn, null); return; }
+            var why = res && res.status === 'erro'
+                ? 'Copiado sem os dados do registro: o Zoho recusou a leitura (' + res.error + '). Confira se você está logado.'
+                : 'Copiado sem os dados do registro: abra um Deal (ou Lead) no Zoho nesta aba para preencher os #campos.';
+            writeClipboard(raw, btn, why);
+        });
+    }
+
+    /** Clipboard API primeiro, textarea + execCommand se ela recusar. `warn` vira aviso depois de copiar. */
+    function writeClipboard(text, btn, warn) {
         var done = function (ok) {
-            if (!ok) { showAlert('Não foi possível copiar: o navegador bloqueou a área de transferência. Selecione o texto e use Ctrl/⌘ + C.', 'error'); return; }
+            if (!ok) { btn.textContent = 'Copiar'; showAlert('Não foi possível copiar: o navegador bloqueou a área de transferência. Selecione o texto e use Ctrl/⌘ + C.', 'error'); return; }
+            if (warn) showAlert(warn, 'error');
             btn.textContent = 'Copiado';
             btn.classList.add('is-copied');
             setTimeout(function () { btn.textContent = 'Copiar'; btn.classList.remove('is-copied'); }, 1500);

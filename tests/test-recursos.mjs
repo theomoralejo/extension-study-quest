@@ -115,9 +115,16 @@ async function abrir(urlPath, { recordStatus = 200, ctx = null } = {}) {
     await context.close();
 
     const falha = await abrir("/crm/org1/tab/Potentials/123", { recordStatus: 500 });
-    const r = await falha.page.evaluate(() => SQPlaceholders.fill("Oi #Deal_Name"));
-    ok(r === "Oi #Deal_Name", "Zoho recusando o registro: texto vai como esta", r);
+    const r = await falha.page.evaluate(() => SQPlaceholders.fillAll(["Oi #Deal_Name"]));
+    ok(r.texts[0] === "Oi #Deal_Name" && r.status === "erro" && r.error, "Zoho recusando o registro: texto como esta e o motivo vem junto", JSON.stringify(r));
     await falha.context.close();
+
+    // campo do modulo que o Zoho omitiu da resposta (vazio no registro) vira texto vazio
+    const omitido = await abrir("/crm/org1/tab/Potentials/123");
+    await omitido.page.route("**/crm/v*/**/settings/fields*", (route) => route.fulfill({ json: { fields: CAMPOS.concat([{ api_name: "st_Bonus_Payment", field_label: "Bonus", data_type: "currency" }]) } }));
+    const o = await omitido.page.evaluate(() => SQPlaceholders.fill("Bonus: [#st_Bonus_Payment] #Deal_Name"));
+    ok(o === "Bonus: [] Maria Silva", "campo do modulo ausente na resposta do registro vira vazio, nao fica #", o);
+    await omitido.context.close();
 }
 
 // ---------- 2 e 3. painel de notas arrastavel + fluxo ao recolher ----------
@@ -240,6 +247,23 @@ async function abrir(urlPath, { recordStatus = 200, ctx = null } = {}) {
     await context.close();
 }
 
+// ---------- inserir com o Zoho recusando o registro: avisa na tela ----------
+{
+    const { page: p, context } = await abrir("/com-editor/crm/org1/tab/Potentials/123", { recordStatus: 401 });
+    await p.evaluate(() => {
+        window.fetch = ((orig) => (url, o) => String(url).includes("/replies")
+            ? Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve([{ id: "1", title: "Oi", text: "Olá #Deal_Name", category: "Geral" }]), text: () => Promise.resolve("") })
+            : orig(url, o))(window.fetch);
+    });
+    await p.waitForSelector(".quick-replies-btn", { timeout: 8000 });
+    await p.click(".quick-replies-btn");
+    await p.waitForSelector(".quick-reply-item");
+    await p.click(".quick-reply-item");
+    const aviso = await p.waitForSelector(".quick-replies-notification.error", { timeout: 3000 }).then((e) => e.textContent()).catch(() => "");
+    ok(aviso.includes("não foram preenchidos"), "falha ao ler o registro aparece na tela ao inserir", aviso);
+    await context.close();
+}
+
 // ---------- 4. popup: Copiar + seletor de campos ----------
 {
     const context = await browser.newContext({ viewport: { width: 400, height: 700 }, permissions: ["clipboard-read", "clipboard-write"] });
@@ -253,7 +277,9 @@ async function abrir(urlPath, { recordStatus = 200, ctx = null } = {}) {
             storage: { local: { get: () => Promise.resolve({}), set: () => Promise.resolve() } },
             tabs: {
                 query: () => Promise.resolve([{ id: 1, url: window.__tabUrl || "https://crm.zoho.com/crm/org1/tab/Potentials/123" }]),
-                sendMessage: (id, m) => Promise.resolve(m.action === "recordFields" ? (window.__semRegistro ? null : fields) : null)
+                sendMessage: (id, m) => Promise.resolve(m.action === "recordFields" ? (window.__semRegistro ? null : fields)
+                    : m.action === "fillText" ? (window.__semRegistro ? { status: "sem-registro", texts: m.texts } : { status: "ok", texts: m.texts.map((t) => t.replace("#Deal_Name", "Maria Silva")) })
+                    : null)
             }
         };
     });
@@ -263,10 +289,18 @@ async function abrir(urlPath, { recordStatus = 200, ctx = null } = {}) {
     ok(ordem.join(",") === "Copiar,Editar,Excluir", "Copiar ao lado de Editar e Excluir", ordem.join(","));
     await p.click(".btn-copy");
     const clip = await p.evaluate(() => navigator.clipboard.readText());
-    ok(clip === "Linha 1\nLinha 2 com #Deal_Name", "copia o texto inteiro da resposta", JSON.stringify(clip));
-    ok((await p.textContent(".btn-copy")) === "Copiado", "botao confirma que copiou");
+    ok(clip === "Linha 1\nLinha 2 com Maria Silva", "copia o texto inteiro ja com os dados do deal", JSON.stringify(clip));
+    await p.waitForFunction(() => document.querySelector(".btn-copy").textContent === "Copiado");
+    ok(true, "botao confirma que copiou");
     await p.waitForTimeout(1700);
     ok((await p.textContent(".btn-copy")) === "Copiar", "rotulo volta depois de 1,5s");
+    await p.evaluate(() => { window.__semRegistro = true; });
+    await p.click(".btn-copy");
+    await p.waitForFunction(() => document.querySelector(".btn-copy").textContent === "Copiado");
+    const clipCru = await p.evaluate(() => navigator.clipboard.readText());
+    const alerta = await p.textContent("#alert");
+    ok(clipCru.includes("#Deal_Name") && alerta.includes("abra um Deal"), "sem deal aberto: copia como esta e avisa por que", alerta);
+    await p.evaluate(() => { window.__semRegistro = false; });
 
     await p.fill("#replyText", "Oi, tudo bem?");
     await p.$eval("#replyText", (t) => t.setSelectionRange(3, 3));
