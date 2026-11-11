@@ -312,6 +312,25 @@ button[type="submit"][disabled] {
   white-space: pre-wrap;
 }
 
+.fill-note {
+  font-size: 12px;
+  line-height: 1.4;
+  margin: 0 0 8px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: #eef4fb;
+  color: #1f4e79;
+}
+
+.fill-note.is-hidden {
+  display: none;
+}
+
+.fill-note.is-warn {
+  background: #fff4e5;
+  color: #8a4b00;
+}
+
 .reply-author {
   font-size: 11px;
   color: #888;

@@ -259,6 +259,7 @@
         }
 
         listContainer.textContent = '';
+        var textEls = [];
 
         replies.forEach(function (reply) {
             var item = document.createElement('div');
@@ -276,6 +277,7 @@
             var text = document.createElement('div');
             text.className = 'reply-text';
             text.textContent = reply.text || '';
+            textEls.push({ el: text, raw: reply.text || '' });
 
             var author = document.createElement('div');
             author.className = 'reply-author';
@@ -314,6 +316,47 @@
 
             listContainer.appendChild(item);
         });
+        previewFilled(textEls);
+    }
+
+    var TOKEN_RE = /#[A-Za-z][A-Za-z0-9_]*/;
+
+    /**
+     * Pede a aba ativa do Zoho os textos com os #campos trocados pelo registro aberto.
+     * Resolve { status, texts, error }; 'sem-resposta' = aba aberta antes de a
+     * extensao ser atualizada (content script antigo nao responde ate recarregar).
+     */
+    function fillFromTab(texts) {
+        return SQ.activeTab().then(function (tab) {
+            if (!tab || !tab.url || !/^https:\/\/[^/]*zoho/.test(tab.url)) return { status: 'sem-registro', texts: texts };
+            return SQ.sendMessageToTab(tab.id, { action: 'fillText', texts: texts }).then(function (res) {
+                return res && res.texts ? res : { status: 'sem-resposta', texts: texts };
+            });
+        }).catch(function (e) { return { status: 'erro', texts: texts, error: e.message }; });
+    }
+
+    function fillProblem(res) {
+        if (res.status === 'erro') return 'O Zoho recusou a leitura do registro (' + res.error + '). Confira se você está logado no Zoho.';
+        if (res.status === 'sem-resposta') return 'Recarregue a página do Zoho (F5) para preencher os #campos: a extensão foi atualizada e a aba ainda está com a versão antiga.';
+        return 'Abra um Deal (ou Lead) no Zoho nesta aba para preencher os #campos.';
+    }
+
+    /** O que aparece na lista e o que o Copiar leva: o texto ja preenchido com o registro aberto. */
+    function previewFilled(textEls) {
+        var note = document.getElementById('fillNote');
+        var withTokens = textEls.filter(function (t) { return TOKEN_RE.test(t.raw); });
+        if (!withTokens.length) { note.classList.add('is-hidden'); return; }
+        fillFromTab(withTokens.map(function (t) { return t.raw; })).then(function (res) {
+            note.classList.remove('is-hidden');
+            if (res.status !== 'ok') {
+                note.className = 'fill-note is-warn';
+                note.textContent = fillProblem(res);
+                return;
+            }
+            withTokens.forEach(function (t, i) { t.el.textContent = res.texts[i]; t.el.title = 'Modelo: ' + t.raw; });
+            note.className = 'fill-note';
+            note.textContent = 'Mostrando com os dados do registro aberto. O modelo com os #campos aparece em Editar.';
+        });
     }
 
     /**
@@ -322,17 +365,11 @@
      */
     function copyReply(reply, btn) {
         var raw = reply.text || '';
-        if (!/#[A-Za-z][A-Za-z0-9_]*/.test(raw)) { writeClipboard(raw, btn, null); return; }
+        if (!TOKEN_RE.test(raw)) { writeClipboard(raw, btn, null); return; }
         btn.textContent = 'Copiando...';
-        SQ.activeTab().then(function (tab) {
-            if (!tab || !tab.url || tab.url.indexOf('zoho') === -1) return null;
-            return SQ.sendMessageToTab(tab.id, { action: 'fillText', texts: [raw] });
-        }).then(function (res) {
-            if (res && res.status === 'ok') { writeClipboard(res.texts[0], btn, null); return; }
-            var why = res && res.status === 'erro'
-                ? 'Copiado sem os dados do registro: o Zoho recusou a leitura (' + res.error + '). Confira se você está logado.'
-                : 'Copiado sem os dados do registro: abra um Deal (ou Lead) no Zoho nesta aba para preencher os #campos.';
-            writeClipboard(raw, btn, why);
+        fillFromTab([raw]).then(function (res) {
+            if (res.status === 'ok') { writeClipboard(res.texts[0], btn, null); return; }
+            writeClipboard(raw, btn, 'Copiado sem os dados do registro. ' + fillProblem(res));
         });
     }
 

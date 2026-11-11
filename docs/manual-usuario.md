@@ -10,6 +10,10 @@
 ## Copiar uma resposta
 Em **Minhas Respostas**, o botão **Copiar** (ao lado de Editar e Excluir) copia o texto inteiro, já com os `#Campo` trocados pelos dados do Deal aberto na aba. O botão mostra "Copiado" por 1,5 s. Sem Deal aberto, copia como está e o popup avisa.
 
+Com um Deal aberto na aba, a lista **Minhas Respostas** já mostra cada resposta com os dados dele (o que aparece é o que o Copiar leva). O modelo com os `#Campo` aparece ao clicar em Editar.
+
+Se o popup pedir para recarregar a página do Zoho, aperte F5 na aba do Zoho: isso acontece logo depois de atualizar a extensão.
+
 ## Mover os painéis
 - Arraste o painel de **Notas** ou o de **respostas rápidas** pelo cabeçalho. A posição fica salva.
 - Duplo clique no cabeçalho volta o painel ao lugar padrão.

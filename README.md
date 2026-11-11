@@ -72,6 +72,9 @@ npm test
   registro (e hashtag comum preservada), painéis arrastáveis com posição
   lembrada após recarregar, painel de notas que continua aberto com o rascunho,
   botão Copiar e seletor de campos do popup.
+- `e2e-extensao.mjs` — a extensão instalada de verdade num Chromium, com o
+  `crm.zoho.com` simulado: popup → aba do Deal → texto preenchido, sem
+  `chrome.*` falso. Pega o que só quebra instalado.
 - `test-varredura.mjs` — a varredura incremental pega campo, telefone e editor
   que chegam depois, não faz nada em aba de fundo e não regrava o storage.
 - `bench-desempenho.mjs` — mede o JS gasto em 10 s de página viva, com e sem a

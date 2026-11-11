@@ -299,7 +299,7 @@ async function abrir(urlPath, { recordStatus = 200, ctx = null } = {}) {
     await p.waitForFunction(() => document.querySelector(".btn-copy").textContent === "Copiado");
     const clipCru = await p.evaluate(() => navigator.clipboard.readText());
     const alerta = await p.textContent("#alert");
-    ok(clipCru.includes("#Deal_Name") && alerta.includes("abra um Deal"), "sem deal aberto: copia como esta e avisa por que", alerta);
+    ok(clipCru.includes("#Deal_Name") && alerta.includes("Abra um Deal"), "sem deal aberto: copia como esta e avisa por que", alerta);
     await p.evaluate(() => { window.__semRegistro = false; });
 
     await p.fill("#replyText", "Oi, tudo bem?");
