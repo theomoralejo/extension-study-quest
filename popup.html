@@ -46,6 +46,17 @@
         <label for="replyText">Texto da Resposta</label>
         <textarea id="replyText" name="replyText" placeholder="Digite a resposta completa aqui..." required
           rows="4"></textarea>
+        <div class="field-tools">
+          <span class="field-hint">Use <code>#Campo</code> para puxar o valor do registro, ex.: <code>#Deal_Name</code></span>
+          <button type="button" id="btnFields" class="btn-link" aria-expanded="false" aria-controls="fieldPicker">Inserir campo</button>
+        </div>
+        <div id="fieldPicker" class="field-picker is-hidden">
+          <div class="field-picker-search">
+            <input type="search" id="fieldSearch" class="field" autocomplete="off" placeholder="Buscar campo..." aria-label="Buscar campo">
+          </div>
+          <p id="fieldPickerStatus" class="field-picker-status" role="status"></p>
+          <ul id="fieldList" class="field-list"></ul>
+        </div>
       </div>
 
       <button type="submit" id="submitBtn">Adicionar Resposta Rápida</button>

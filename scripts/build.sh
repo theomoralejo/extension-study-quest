@@ -27,6 +27,8 @@ FILES=(
   config.js
   content.js
   zoho-api.js
+  drag.js
+  placeholders.js
   field-history.js
   notes-panel.js
   popup.html

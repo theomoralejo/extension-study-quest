@@ -9,7 +9,6 @@
     var currentEditor = null;
     var currentInsert = null; // destino do template: editor do Zoho ou painel de notas
     var panelAnchorButton = null;
-    var observerTimeout = null;
     var repositionScheduled = false;
 
     // Espaco minimo entre o painel e a borda da janela.
@@ -39,47 +38,95 @@
     var ICON_CLIPBOARD = 'M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z';
     var ICON_CHECK = 'M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z';
 
+    // ---------- varredura incremental ----------
+    // O Zoho mexe no DOM o tempo todo (relogio, contadores, tooltips). Varrer o
+    // documento inteiro a cada mudanca custava ~39% de um nucleo em pagina viva,
+    // em toda aba do CRM aberta. Agora so o que entrou no DOM e olhado, no maximo
+    // a cada SCAN_GAP ms, e nada roda com a aba em segundo plano.
+    var SCAN_GAP = 400;
+    var MAX_ROOTS = 300;     // acima disso uma varredura inteira custa menos
+    var OURS = '.sqn-panel, .sqn-tab, .quick-replies-panel, .quick-replies-notification, .zfh-pop, .zfh-icon, .zoho-wa-btn, .zoho-copy-btn, .quick-replies-btn';
+    var pendingRoots = new Set();
+    var needFull = true;
+    var scanTimer = null;
+
+    function queueNode(node) {
+        var el = node.nodeType === 1 ? node : node.parentElement; // texto novo: olha o elemento que o recebeu
+        if (!el || !el.isConnected || el.closest(OURS)) return;
+        pendingRoots.add(el);
+    }
+
+    function scheduleScan() {
+        if (scanTimer || document.hidden) return;
+        scanTimer = setTimeout(function () {
+            var idle = window.requestIdleCallback || function (fn) { return setTimeout(fn, 0); };
+            idle(function () { scanTimer = null; runScan(); }, { timeout: 1000 });
+        }, SCAN_GAP);
+    }
+
+    /** Raizes da varredura: sem as desconectadas e sem as que ja estao dentro de outra. */
+    function compactRoots() {
+        var out = [];
+        pendingRoots.forEach(function (el) {
+            if (!el.isConnected) return;
+            for (var p = el.parentElement; p; p = p.parentElement) if (pendingRoots.has(p)) return;
+            out.push(el);
+        });
+        return out;
+    }
+
+    function runScan() {
+        if (document.hidden) { needFull = true; return; }
+        var roots = needFull || pendingRoots.size > MAX_ROOTS ? [document.body] : compactRoots();
+        needFull = false;
+        pendingRoots.clear();
+        tickNotesPanel();
+        tickFieldHistory(roots[0] === document.body ? null : roots);
+        if (!roots.length) return;
+        checkForNoteEditor(roots);
+        checkForPhoneNumbers(roots);
+        checkForInputs(roots);
+    }
+
+    /**
+     * Elementos que casam com `sel` dentro das raizes, mais o ancestral que casa
+     * (o Zoho as vezes preenche por dentro um componente que ja existia).
+     */
+    function findIn(roots, sel) {
+        var found = new Set();
+        roots.forEach(function (r) {
+            var up = r.closest(sel);
+            if (up) found.add(up);
+            r.querySelectorAll(sel).forEach(function (n) { found.add(n); });
+        });
+        return Array.from(found);
+    }
+
     init();
 
     function init() {
         console.log('Study Quest Replies: iniciando...');
 
-        // Observar mudanças no DOM usando uma versão debounced (evita travar o navegador)
-        var observer = new MutationObserver(function () {
-            // Em vez de processar TUDO a cada mutação, espera o DOM acalmar 300ms
-            if (observerTimeout) clearTimeout(observerTimeout);
+        var observer = new MutationObserver(function (records) {
+            if (document.hidden) { needFull = true; return; }
+            for (var i = 0; i < records.length; i++) {
+                var added = records[i].addedNodes;
+                for (var j = 0; j < added.length; j++) {
+                    var t = added[j].nodeType;
+                    if (t === 1 || (t === 3 && added[j].nodeValue.trim())) queueNode(added[j]);
+                }
+            }
+            if (pendingRoots.size || needFull) scheduleScan();
+        });
+        observer.observe(document.body, { childList: true, subtree: true });
 
-            observerTimeout = setTimeout(function () {
-                checkForNoteEditor();
-                checkForPhoneNumbers();
-                checkForInputs();
-                tickFieldHistory();
-                tickNotesPanel();
-            }, 300);
+        // Aba volta ao primeiro plano: uma varredura inteira cobre o que mudou enquanto estava escondida.
+        document.addEventListener('visibilitychange', function () {
+            if (!document.hidden) { needFull = true; scheduleScan(); }
         });
 
-        observer.observe(document.body, {
-            childList: true,
-            subtree: true
-        });
-
-        // O historico de campo depende da URL do registro, que ja existe no
-        // primeiro paint: varrer agora evita esperar os 2s abaixo (ou a
-        // proxima mutacao) para o icone aparecer.
-        tickFieldHistory();
-
-        // Verificar inicialmente
-        setTimeout(function () {
-            checkForNoteEditor();
-            checkForPhoneNumbers();
-            checkForInputs();
-            tickFieldHistory();
-
-            // Buscar na inicialização e setar a flag
-            cacheZohoAuthorName();
-        }, 2000);
-
-        // Executar uma rotina bem mais leve a cada 30 segundos (isso evita freezing contínuo)
+        scheduleScan();
+        setTimeout(cacheZohoAuthorName, 2000);
         setInterval(cacheZohoAuthorName, 30000);
 
         // O painel e `position: fixed` ancorado no botao: se a janela muda de
@@ -89,21 +136,21 @@
         window.addEventListener('scroll', scheduleReposition, { passive: true, capture: true });
     }
 
+    // Grava so quando muda: cada gravacao acorda os outros contextos da extensao.
+    var lastAuthor = null;
     function cacheZohoAuthorName() {
-        // Para nao travar a UI, executa em uma micro-tarefa nativa do EventLoop
-        Promise.resolve().then(function () {
-            var author = getZohoAuthor();
-            if (author && SQ) {
-                SQ.storageSet({ zohoAuthor: author });
-            }
-        });
+        if (document.hidden) return;
+        var author = getZohoAuthor();
+        if (author && SQ && author !== lastAuthor) {
+            lastAuthor = author;
+            SQ.storageSet({ zohoAuthor: author });
+        }
     }
 
-    function checkForNoteEditor() {
-        // Procurar pelo editor de notas do Zoho
+    function checkForNoteEditor(roots) {
         // Zoho trocou o editor (nov/2026): `lyte-note-editor` + `.lyteNoteFooterActions`.
         // O formato antigo (`crux-note-editor` + `.cxNotesFooterLeft`) continua aceito.
-        var noteEditors = document.querySelectorAll('lyte-note-editor, crux-note-editor');
+        var noteEditors = findIn(roots, 'lyte-note-editor, crux-note-editor');
 
         noteEditors.forEach(function (editor) {
             // Verificar se já adicionamos o botão neste editor
@@ -241,6 +288,11 @@
         button.setAttribute('aria-expanded', 'true');
 
         positionPanel();
+        if (globalThis.SQDrag) {
+            // Posicao escolhida pela pessoa vence a ancora; duplo clique volta para a ancora.
+            globalThis.SQDrag.attach(panel, header, 'quickReplies', { onReset: positionPanel });
+            globalThis.SQDrag.restore(panel, 'quickReplies');
+        }
 
         panel.querySelector('.quick-replies-close').addEventListener('click', closeQuickRepliesPanel);
         panel.querySelector('.quick-replies-search-input').addEventListener('input', handleSearch);
@@ -299,13 +351,19 @@
         quickRepliesPanel.style.top = top + 'px';
     }
 
+    function repositionNow() {
+        if (!quickRepliesPanel) return;
+        if (globalThis.SQDrag && globalThis.SQDrag.saved('quickReplies')) globalThis.SQDrag.clamp(quickRepliesPanel, 'quickReplies');
+        else positionPanel();
+    }
+
     // Agrupa resize/scroll num unico recalculo por frame.
     function scheduleReposition() {
         if (!quickRepliesPanel || repositionScheduled) return;
         repositionScheduled = true;
         requestAnimationFrame(function () {
             repositionScheduled = false;
-            positionPanel();
+            repositionNow();
         });
     }
 
@@ -490,7 +548,7 @@
                 ? 'Nenhuma resposta encontrada para esse filtro'
                 : 'Nenhuma resposta cadastrada';
             listContainer.appendChild(empty);
-            scheduleReposition();
+            repositionNow();
             return;
         }
 
@@ -522,7 +580,11 @@
             item.appendChild(author);
 
             function insert() {
-                (currentInsert || insertReplyIntoEditor)(reply.title, reply.text);
+                var target = currentInsert || insertReplyIntoEditor;
+                var P = globalThis.SQPlaceholders;
+                if (!P) { target(reply.title, reply.text); return; }
+                // #Campo vira o valor do registro aberto; sem registro ou em falha, vai o texto como esta.
+                Promise.all([P.fill(reply.title), P.fill(reply.text)]).then(function (v) { target(v[0], v[1]); });
             }
             item.addEventListener('click', insert);
             item.addEventListener('keydown', function (e) {
@@ -535,8 +597,9 @@
             listContainer.appendChild(item);
         });
 
-        // A altura mudou: reancorar para o painel nao vazar pela borda de baixo.
-        scheduleReposition();
+        // A altura mudou: reancorar ja, no mesmo quadro. Adiar para o proximo
+        // quadro deixava o painel crescido, por um quadro, vazando pela borda de baixo.
+        repositionNow();
     }
 
     function handleSearch() {
@@ -689,9 +752,9 @@
 
     // --- Funcionalidade de WhatsApp ---
 
-    function checkForPhoneNumbers() {
-        var phoneComponents = document.querySelectorAll('crux-phone-component:not([data-wa-added])');
-        var callContainers = document.querySelectorAll('crmutil-icon[icon-name^="call"]:not([data-wa-added])');
+    function checkForPhoneNumbers(roots) {
+        var phoneComponents = findIn(roots, 'crux-phone-component:not([data-wa-added])');
+        var callContainers = findIn(roots, 'crmutil-icon[icon-name^="call"]:not([data-wa-added])');
 
         phoneComponents.forEach(function (comp) {
             var phoneSpan = comp.querySelector('.lvPhFld');
@@ -826,9 +889,9 @@
 
     // --- Botão de Copiar Texto ---
 
-    function checkForInputs() {
+    function checkForInputs(roots) {
         // Somente as caixas de valor finais (para nao sujar menus e labels da esquerda)
-        var textComponents = document.querySelectorAll('.dv_info_value_field:not([data-copy-added])');
+        var textComponents = findIn(roots, '.dv_info_value_field:not([data-copy-added])');
         var pending = [];
 
         textComponents.forEach(function (comp) {
@@ -1033,9 +1096,9 @@
      * Envolvido em try/catch porque uma falha dele nao pode derrubar as quick
      * replies — sao features independentes no mesmo content script.
      */
-    function tickFieldHistory() {
+    function tickFieldHistory(roots) {
         try {
-            if (globalThis.SQFieldHistory) globalThis.SQFieldHistory.tick();
+            if (globalThis.SQFieldHistory) globalThis.SQFieldHistory.tick(roots);
         } catch (err) {
             console.error('Study Quest: historico de campo falhou nesta varredura', err);
         }
@@ -1072,6 +1135,10 @@
         if (!request) return undefined;
         if (request.action === 'getAuthor') {
             return { author: getZohoAuthor() };
+        }
+        if (request.action === 'recordFields') {
+            if (!globalThis.SQPlaceholders) return null;
+            return globalThis.SQPlaceholders.fields().catch(function (e) { return { error: e.message }; });
         }
         if (request.action === 'fieldHistoryStatus') {
             return globalThis.SQFieldHistory

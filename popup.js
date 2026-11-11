@@ -33,6 +33,7 @@
         });
 
         showFieldHistoryStatus();
+        setupFieldPicker();
 
         // Alternar entre escolher categoria existente e criar uma nova
         var btnNew = document.getElementById('btnNewCategory');
@@ -294,6 +295,14 @@
             btnDelete.textContent = 'Excluir';
             btnDelete.addEventListener('click', function () { deleteReply(reply.id); });
 
+            var btnCopy = document.createElement('button');
+            btnCopy.type = 'button';
+            btnCopy.className = 'btn-small btn-copy';
+            btnCopy.textContent = 'Copiar';
+            btnCopy.title = 'Copiar o texto inteiro da resposta';
+            btnCopy.addEventListener('click', function () { copyReply(reply, btnCopy); });
+
+            actions.appendChild(btnCopy);
             actions.appendChild(btnEdit);
             actions.appendChild(btnDelete);
 
@@ -304,6 +313,130 @@
 
             listContainer.appendChild(item);
         });
+    }
+
+    /** Copia o texto inteiro; Clipboard API primeiro, textarea + execCommand se ela recusar. */
+    function copyReply(reply, btn) {
+        var text = reply.text || '';
+        var done = function (ok) {
+            if (!ok) { showAlert('Não foi possível copiar: o navegador bloqueou a área de transferência. Selecione o texto e use Ctrl/⌘ + C.', 'error'); return; }
+            btn.textContent = 'Copiado';
+            btn.classList.add('is-copied');
+            setTimeout(function () { btn.textContent = 'Copiar'; btn.classList.remove('is-copied'); }, 1500);
+        };
+        var fallback = function () {
+            var ta = document.createElement('textarea');
+            ta.value = text;
+            ta.setAttribute('readonly', '');
+            ta.style.position = 'fixed';
+            ta.style.opacity = '0';
+            document.body.appendChild(ta);
+            ta.select();
+            var ok = false;
+            try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+            ta.remove();
+            done(ok);
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(function () { done(true); }, fallback);
+        } else {
+            fallback();
+        }
+    }
+
+    // ---------- #Campo: campos do registro aberto no Zoho ----------
+    var fieldsLoaded = null; // { module, fields } do registro da aba ativa
+
+    function setupFieldPicker() {
+        var btn = document.getElementById('btnFields');
+        var picker = document.getElementById('fieldPicker');
+        var search = document.getElementById('fieldSearch');
+
+        btn.addEventListener('click', function () {
+            var open = picker.classList.contains('is-hidden');
+            picker.classList.toggle('is-hidden', !open);
+            btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+            if (!open) return;
+            search.focus();
+            if (!fieldsLoaded) loadFields();
+        });
+        search.addEventListener('input', renderFields);
+        search.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape') { e.preventDefault(); btn.click(); btn.focus(); }
+        });
+    }
+
+    function pickerStatus(text) {
+        document.getElementById('fieldPickerStatus').textContent = text;
+    }
+
+    function loadFields() {
+        pickerStatus('Carregando campos do registro...');
+        document.getElementById('fieldSearch').disabled = true;
+        SQ.activeTab().then(function (tab) {
+            if (!tab || !tab.url || tab.url.indexOf('zoho') === -1) return null;
+            return SQ.sendMessageToTab(tab.id, { action: 'recordFields' });
+        }).then(function (res) {
+            document.getElementById('fieldSearch').disabled = false;
+            if (res && res.error) {
+                pickerStatus('O Zoho não devolveu os campos (' + res.error + '). Confira se você está logado e tente de novo.');
+                return;
+            }
+            if (!res || !res.fields) {
+                pickerStatus('Abra um registro do Zoho (Deal, Lead, Contact...) nesta aba para listar os campos. Você também pode digitar #Nome_API direto no texto.');
+                return;
+            }
+            fieldsLoaded = res;
+            renderFields();
+        });
+    }
+
+    function renderFields() {
+        var list = document.getElementById('fieldList');
+        list.textContent = '';
+        if (!fieldsLoaded) return;
+        var q = document.getElementById('fieldSearch').value.trim().toLowerCase();
+        var shown = fieldsLoaded.fields.filter(function (f) {
+            return !q || f.label.toLowerCase().indexOf(q) !== -1 || f.api.toLowerCase().indexOf(q) !== -1;
+        });
+        pickerStatus(shown.length
+            ? 'Campos de ' + fieldsLoaded.module + ' · o valor abaixo é o deste registro'
+            : 'Nenhum campo com "' + q + '". Limpe a busca para ver todos.');
+        shown.forEach(function (f) {
+            var li = document.createElement('li');
+            var b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'field-item';
+            var top = document.createElement('div');
+            top.className = 'field-item-top';
+            var label = document.createElement('span');
+            label.textContent = f.label;
+            var code = document.createElement('code');
+            code.textContent = '#' + f.api;
+            top.appendChild(label);
+            top.appendChild(code);
+            var val = document.createElement('div');
+            val.className = 'field-item-value';
+            val.textContent = f.value || '(vazio neste registro)';
+            b.appendChild(top);
+            b.appendChild(val);
+            b.addEventListener('click', function () { insertToken('#' + f.api); });
+            li.appendChild(b);
+            list.appendChild(li);
+        });
+    }
+
+    /** Coloca o token no cursor do "Texto da Resposta", com espaco antes quando colado em palavra. */
+    function insertToken(token) {
+        var ta = document.getElementById('replyText');
+        var start = ta.selectionStart != null ? ta.selectionStart : ta.value.length;
+        var end = ta.selectionEnd != null ? ta.selectionEnd : start;
+        var before = ta.value.slice(0, start);
+        if (before && !/\s$/.test(before)) token = ' ' + token;
+        ta.value = before + token + ta.value.slice(end);
+        var pos = start + token.length;
+        ta.focus();
+        ta.setSelectionRange(pos, pos);
     }
 
     /**

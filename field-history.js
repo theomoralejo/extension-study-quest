@@ -131,17 +131,28 @@
     var count = function (t, s) { return t.split(s).length - 1; };
     var UPDATED = /^(.+?) was updated from (.+?) to (.+?)(?: by (.+?) (\d{1,2}\/\d{1,2}\/\d{4}))?$/;
 
-    function scrapeTimeline() {
-        if (!current) return;
+    /** Elementos que contem uma entrada "X was updated from ..." nas raizes (o menor que contem a frase). */
+    function timelineEntries(roots) {
+        var out = new Set();
+        (roots || [document.body]).forEach(function (root) {
+            var w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+            for (var n = w.nextNode(); n; n = w.nextNode()) {
+                if (n.nodeValue.indexOf("was updated from") === -1) continue;
+                var el2 = n.parentElement;
+                for (var i = 0; el2 && i < 3 && textOf(el2).indexOf(" was updated from ") === -1; i++) el2 = el2.parentElement;
+                if (el2) out.add(el2);
+            }
+        });
+        return out;
+    }
+
+    function scrapeTimeline(roots) {
+        // Reserva: so le a tela quando a API recusou. Com a API ok, a tela nao acrescenta nada.
+        if (!current || !status.apiError) return;
         var found = [];
-        var it = allElements(), step;
-        while (!(step = it.next()).done) {
-            var el2 = step.value;
-            if (!el2.textContent.includes("was updated from")) continue;
+        timelineEntries(roots).forEach(function (el2) {
             var t = textOf(el2);
-            if (!t.includes(" was updated from ") || t.length > 600) continue;
-            // fica com o menor elemento que contem uma entrada inteira
-            if ([].slice.call(el2.children).some(function (ch) { return ch.textContent.includes(" was updated from "); })) continue;
+            if (t.length > 600) return;
             var row = el2, text = t;
             // sobe ate incluir a linha "by Nome dd/mm/aaaa"
             for (var i = 0; i < 4 && !/ by .+ \d{1,2}\/\d{1,2}\/\d{4}/.test(text) && row.parentElement; i++) {
@@ -152,7 +163,7 @@
             }
             var start = text.indexOf(t.split(" was updated from ")[0]);
             var m = text.slice(start).match(UPDATED);
-            if (!m) continue;
+            if (!m) return;
             // a hora ("13:02") fica ao lado da entrada
             var time = null, box = row;
             for (var j = 0; j < 4 && box && !time; j++, box = box.parentElement) {
@@ -173,14 +184,16 @@
                 label: m[1].trim(), old: blank(m[2]), new: blank(m[3].replace(/ by .*$/, "")),
                 by: m[4] || "Desconhecido", when: when, hasTime: !!time
             });
-        }
+        });
         if (!found.length) return;
         var key = "tl_" + current.id;
         SQ.storageGet(key).then(function (r) {
             var stored = (r && r[key]) || [];
             var sig = function (c) { return norm(c.label) + "|" + c.when + "|" + c.old + "|" + c.new; };
             var seen = new Set(stored.map(sig));
+            var before = stored.length;
             found.forEach(function (c) { if (!seen.has(sig(c))) { stored.push(c); seen.add(sig(c)); } });
+            if (stored.length === before) return; // nada novo: nao regrava o storage
             if (stored.length > MAX_SCRAPED) stored = stored.slice(stored.length - MAX_SCRAPED);
             SQ.storageSet(Object.fromEntries([[key, stored]]));
             status.scraped = stored.length;
@@ -220,19 +233,28 @@
         return false;
     }
 
-    function addIcons() {
+    /** Texto proprio do elemento (so os filhos de texto), ou "" sem gastar com quem nao tem. */
+    function ownText(node) {
+        var t = "";
+        for (var c = node.firstChild; c; c = c.nextSibling) if (c.nodeType === 3) t += " " + c.nodeValue;
+        return t;
+    }
+
+    /** `roots`: so esses pedacos do DOM (o que acabou de entrar); sem raizes, a pagina inteira. */
+    function addIcons(roots) {
         if (!current || !labels.size) return;
         var placed = 0;
-        var it = allElements(), step;
+        (roots || [null]).forEach(function (root) {
+        var it = allElements(root), step;
         while (!(step = it.next()).done) {
             var node = step.value;
-            if ((node.dataset && node.dataset.zfh) || (node.closest && node.closest(".zfh-pop, .zfh-icon"))) continue;
+            if (node.dataset && node.dataset.zfh) continue;
             // elemento cujo texto proprio e exatamente o nome de um campo
-            var own = [].slice.call(node.childNodes)
-                .filter(function (n) { return n.nodeType === 3; })
-                .map(function (n) { return n.nodeValue; }).join(" ");
+            var own = ownText(node);
+            if (!own || own.length > 200) continue;
             var key = norm(own);
             if (!key || key.length > 60 || !labels.has(key)) continue;
+            if (node.closest && node.closest(".zfh-pop, .zfh-icon")) continue;
             if (/^(A|BUTTON|OPTION|SELECT|TEXTAREA|SCRIPT|STYLE|TITLE)$/.test(node.tagName)) continue;
             if (isTimelineText(node)) continue;
             node.dataset.zfh = "1";
@@ -256,6 +278,7 @@
             node.prepend(btn);
             placed++;
         }
+        });
         status.icons += placed;
     }
 
@@ -419,16 +442,16 @@
         status.page = next.module + " " + next.id;
         apiPromise = loadApi(current.module, current.id);
         apiPromise.then(function (h) { apiHistory = h; addIcons(); })
-            .catch(function (e) { status.apiError = e.message; });
+            .catch(function (e) { status.apiError = e.message; scrapeTimeline(); }); // API recusou: le a Timeline que ja esta na tela
         addIcons();
     }
 
     globalThis.SQFieldHistory = {
-        /** Chamado pelo observer unico do content.js a cada acalmada do DOM. */
-        tick: function () {
+        /** Chamado pelo observer unico do content.js com o que entrou no DOM (sem raizes = pagina inteira). */
+        tick: function (roots) {
             onUrl();
-            addIcons();
-            scrapeTimeline();
+            addIcons(roots);
+            scrapeTimeline(roots);
         },
         /** Estado para o popup (diagnostico). */
         status: function () {

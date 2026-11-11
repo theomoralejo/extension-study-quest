@@ -329,3 +329,9 @@
         transform: none;
     }
 }
+
+/* Paineis arrastaveis (drag.js): o cabecalho e a alca. */
+.sq-drag-handle { cursor: move; user-select: none; touch-action: none; }
+.sq-drag-handle button, .sq-drag-handle input, .sq-drag-handle select { cursor: pointer; }
+/* Sem mexer em `animation`: tirar e devolver a classe faria a entrada animar de novo ao soltar. */
+.sq-dragging { transition: none !important; opacity: 0.96; }

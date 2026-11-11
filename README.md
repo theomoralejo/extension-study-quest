@@ -68,6 +68,15 @@ npm test
   volta, a forma de invólucro dá 4 falhas (o texto vai para o invólucro e o campo
   fica vazio) — e a forma plana continua passando, que é exatamente por que o
   defeito sobrevivia à suíte.
+- `test-recursos.mjs` — recursos da 1.7.0: `#Campo` trocado pelo valor do
+  registro (e hashtag comum preservada), painéis arrastáveis com posição
+  lembrada após recarregar, painel de notas que continua aberto com o rascunho,
+  botão Copiar e seletor de campos do popup.
+- `test-varredura.mjs` — a varredura incremental pega campo, telefone e editor
+  que chegam depois, não faz nada em aba de fundo e não regrava o storage.
+- `bench-desempenho.mjs` — mede o JS gasto em 10 s de página viva, com e sem a
+  extensão (`node tests/bench-desempenho.mjs [pasta-da-extensao]`). 1.6.0:
+  ~3.900 ms; 1.7.0: ~3 ms.
 - `test-popup.mjs` — carrega `popup.html` **sem `chrome`/`browser` definidos**,
   provando que a camada de compatibilidade degrada em vez de lançar, e checa
   que nada estoura a largura em 320/390/400px.
@@ -84,6 +93,8 @@ manifest.json      MV3, com as chaves de Firefox e Safari
 browser-api.js     camada de compatibilidade entre chrome.* e browser.*
 config.js          fonte única da URL da API e dos headers
 field-history.js   histórico de alteração de campo (Deal e Lead)
+drag.js            painéis arrastáveis pelo cabeçalho, posição lembrada no storage
+placeholders.js    #Campo nas respostas: troca pelo valor do registro aberto
 content.js         injeta painel, WhatsApp, copiar; e é o dono do observer e do despachante
 popup.html/css/js  gestão das respostas rápidas + diagnóstico do histórico
 styles.css         estilos do que é injetado na página do CRM

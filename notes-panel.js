@@ -265,7 +265,7 @@
         head.appendChild(el("span", "sqn-spacer"));
         var refresh = button("sqn-icon-btn", "↻", "Recarregar notas");
         refresh.addEventListener("click", function () { load(); });
-        var close = button("sqn-icon-btn", "✕", "Fechar painel de notas");
+        var close = button("sqn-icon-btn", "✕", "Recolher painel de notas");
         close.addEventListener("click", function () { setOpen(false); });
         head.appendChild(refresh);
         head.appendChild(close);
@@ -359,6 +359,13 @@
         form.appendChild(el("div", "sqn-hint", "Ctrl/⌘ + Enter salva"));
         form.addEventListener("submit", function (e) { e.preventDefault(); send(); });
 
+        var drag = globalThis.SQDrag;
+        if (drag) {
+            drag.attach(panel, head, "notes", { keepHeight: true, maxHeight: 0.8, onMove: syncTab, onReset: syncTab });
+            drag.attachEdge(tab, "notesTab");
+            window.addEventListener("resize", function () { drag.clamp(panel, "notes"); syncTab(); });
+        }
+
         panel.appendChild(head);
         panel.appendChild(listEl);
         panel.appendChild(statusEl);
@@ -366,6 +373,8 @@
         document.body.appendChild(panel);
         document.body.appendChild(tab);
         syncSend();
+        restoreFlow();
+        window.addEventListener("pagehide", saveDrafts);
 
         document.addEventListener("keydown", function (e) {
             if (e.key !== "Escape" || !isOpen || !panel.contains(document.activeElement)) return;
@@ -413,7 +422,68 @@
         panel.hidden = !open;
         tab.setAttribute("aria-expanded", open ? "true" : "false");
         tab.classList.toggle("sqn-tab-open", open);
-        if (open) { load(); restoreRange(); }
+        var flow = {}; flow[OPEN_KEY] = open;
+        globalThis.SQBrowser.storageSet(flow);
+        if (open) {
+            load();
+            restoreRange();
+            if (globalThis.SQDrag) globalThis.SQDrag.restore(panel, "notes").then(syncTab);
+        } else {
+            saveDrafts();
+        }
+        syncTab();
+    }
+
+    /**
+     * A aba acompanha o painel: aberta, encosta do lado de fora dele (onde ele
+     * estiver); recolhida, volta para a borda direita na altura que a pessoa escolheu.
+     */
+    function syncTab() {
+        if (!tab) return;
+        var drag = globalThis.SQDrag;
+        tab.dataset.sqFixed = isOpen ? "1" : "0";
+        if (!isOpen || !drag || !panel.style.left) { // painel no lugar padrao: CSS cuida da aba
+            tab.style.left = "";
+            tab.style.right = "";
+            var edge = !isOpen && drag && drag.saved("notesTab");
+            tab.style.top = edge ? Math.max(12, Math.min(edge.top, document.documentElement.clientHeight - tab.offsetHeight - 12)) + "px" : "";
+            return;
+        }
+        var p = panel.getBoundingClientRect();
+        var w = tab.offsetWidth;
+        var left = p.left - w >= 0 ? p.left - w : Math.min(p.right, document.documentElement.clientWidth - w);
+        tab.style.right = "auto";
+        tab.style.left = left + "px";
+        tab.style.top = (p.top + 16) + "px";
+    }
+
+    // ---------- o fluxo sobrevive a recolher, trocar de pagina e recarregar ----------
+    var OPEN_KEY = "sqnOpen";
+    var DRAFTS_KEY = "sqn-drafts";
+
+    function saveDrafts() {
+        if (!input || !current) return;
+        if (!editing) drafts[current.id] = { title: titleInput.value, html: input.innerHTML, shared: shareBox.checked };
+        try {
+            var keep = {};
+            Object.keys(drafts).forEach(function (id) {
+                var d = drafts[id];
+                if (id !== "__beforeEdit" && d && (d.title || (d.html && d.html !== "<br>"))) keep[id] = d;
+            });
+            sessionStorage.setItem(DRAFTS_KEY, JSON.stringify(keep));
+        } catch (e) { /* sessionStorage bloqueado: rascunho fica so em memoria */ }
+    }
+
+    /** Rascunhos da aba (sessionStorage) e painel aberto/recolhido como a pessoa deixou. */
+    function restoreFlow() {
+        try {
+            var saved = JSON.parse(sessionStorage.getItem(DRAFTS_KEY) || "{}");
+            Object.keys(saved).forEach(function (id) { if (!drafts[id]) drafts[id] = saved[id]; });
+        } catch (e) { /* sem rascunho salvo */ }
+        globalThis.SQBrowser.storageGet([OPEN_KEY]).then(function (r) {
+            if (r && r[OPEN_KEY] && !isOpen && current) setOpen(true);
+        });
+        if (globalThis.SQDrag) globalThis.SQDrag.ready.then(syncTab);
     }
 
     // ---------- edicao ----------
@@ -562,12 +632,19 @@
     async function load() {
         if (!current || !panel) return;
         var seq = ++loadSeq;
-        countEl.textContent = "";
-        showMessage("sqn-loading", "Carregando notas…");
+        var keepScroll = listEl.dataset.rec === current.id ? listEl.scrollTop : 0;
+        var hadNotes = listEl.dataset.rec === current.id && listEl.querySelector(".sqn-note");
+        if (!hadNotes) {
+            countEl.textContent = "";
+            showMessage("sqn-loading", "Carregando notas…");
+        }
         try {
             current.module = await resolveModule(current.tab);
             var notes = await fetchNotes(current);
-            if (seq === loadSeq) render(notes);
+            if (seq !== loadSeq) return;
+            render(notes);
+            listEl.dataset.rec = current.id;
+            listEl.scrollTop = keepScroll;
         } catch (e) {
             if (seq !== loadSeq) return;
             showMessage("sqn-error",
@@ -660,6 +737,7 @@
         errEl.hidden = true;
         statusEl.hidden = true;
         if (isOpen) { panel.hidden = false; load(); }
+        syncTab();
     }
 
     globalThis.SQNotesPanel = { tick: tick };
