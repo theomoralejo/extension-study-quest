@@ -32,5 +32,8 @@ A resposta nova é assinada com o usuário logado no Zoho da aba aberta. Editar 
 ## Colar texto grande numa nota
 A extensão não mexe no texto que está sendo escrito ou colado numa nota do Zoho. Até a 1.7.4 ela punha ícones dentro do texto colado e a tela travava com textos longos.
 
+## Depois de atualizar a extensão
+Com o Zoho aberto durante a atualização, a extensão some da aba e aparece o aviso "Study Quest foi atualizada: recarregue a página (F5) para voltar a usar". Aperte F5 na aba do Zoho. Até a 1.7.5 isso gerava erros "Extension context invalidated" em chrome://extensions → Erros; eles não afetavam o uso e podem ser apagados.
+
 ## Desempenho
 A partir da 1.7.0 a extensão só trabalha no que mudou na tela e para quando a aba do Zoho está em segundo plano.

@@ -90,6 +90,26 @@ await deal.goto("https://crm.zoho.com/crm/org123/tab/Potentials/list");
 const semRegistro = await ext.evaluate((id) => chrome.tabs.sendMessage(id, { action: "fillText", texts: ["#Deal_Name"] }), tabId);
 ok(semRegistro && semRegistro.status === "sem-registro", "fora de um Deal, a aba diz que nao ha registro", JSON.stringify(semRegistro));
 
+// 4. extensao atualizada com o Deal aberto: o script antigo fica orfao e cada chamada
+// a API lanca "Extension context invalidated" (o que o Mauro viu na tela de Erros).
+await deal.goto(DEAL);
+await deal.bringToFront();
+await deal.waitForSelector(".sqn-tab, .sqn-panel", { timeout: 5000 }).catch(() => {});
+// CDP enxerga o mundo isolado do content script (o console da pagina, nao).
+const cdp = await context.newCDPSession(deal);
+const erros = [];
+cdp.on("Runtime.consoleAPICalled", (e) => { const t = e.args.map((a) => a.value || a.description || "").join(" "); if (/context invalidated/i.test(t)) erros.push(t); });
+cdp.on("Runtime.exceptionThrown", (e) => { const t = JSON.stringify(e.exceptionDetails); if (/context invalidated/i.test(t)) erros.push(t.slice(0, 160)); });
+await cdp.send("Runtime.enable");
+await ext.evaluate(() => chrome.runtime.reload()).catch(() => {});
+await deal.waitForTimeout(1500);
+// editor de nota novo: o script antigo tentaria por o botao (getURL do icone) e quebraria
+await deal.evaluate(() => { const ed = document.createElement("lyte-note-editor"); ed.innerHTML = '<div class="lyteNoteFooterActions"></div><div contenteditable="true"></div>'; document.body.appendChild(ed); });
+await deal.waitForTimeout(2500);
+ok(erros.length === 0, "extensao atualizada com a aba aberta: nenhum erro de contexto invalidado", erros.slice(0, 2).join(" | "));
+ok(await deal.locator(".sqn-tab, .sqn-panel, .zoho-copy-btn, .quick-replies-btn").count() === 0, "botoes do script antigo saem da tela");
+ok(((await deal.textContent(".quick-replies-notification").catch(() => "")) || "").includes("recarregue a página"), "aviso pede para recarregar a página");
+
 await context.close();
 fs.rmSync(perfil, { recursive: true, force: true });
 console.log(falhas ? `${falhas} falha(s)` : "Tudo passou");

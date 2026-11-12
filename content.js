@@ -77,6 +77,7 @@
     }
 
     function runScan() {
+        if (!SQ.alive()) { retire(); return; }
         if (document.hidden) { needFull = true; return; }
         var roots = needFull || pendingRoots.size > MAX_ROOTS ? [document.body] : compactRoots();
         needFull = false;
@@ -104,12 +105,37 @@
         return Array.from(found).filter(function (n) { return !n.isContentEditable; });
     }
 
+    var observer = null;
+    var retired = false;
+
     init();
+
+    function onVisible() {
+        if (!document.hidden) { needFull = true; scheduleScan(); }
+    }
+
+    /**
+     * Extensao atualizada com a aba aberta: o Chrome nao reinjeta o script novo e o antigo
+     * perde a API. Ele para de varrer, tira os botoes mortos da tela e pede um recarregar.
+     */
+    function retire() {
+        if (retired) return;
+        retired = true;
+        if (observer) observer.disconnect();
+        clearTimeout(scanTimer);
+        document.removeEventListener('visibilitychange', onVisible);
+        window.removeEventListener('resize', scheduleReposition, { passive: true });
+        window.removeEventListener('scroll', scheduleReposition, { passive: true, capture: true });
+        document.querySelectorAll(OURS).forEach(function (n) { n.remove(); });
+        showNotification('Study Quest foi atualizada: recarregue a página (F5) para voltar a usar.', 'error', 8000);
+    }
 
     function init() {
         console.log('Study Quest Replies: iniciando...');
 
-        var observer = new MutationObserver(function (records) {
+        observer = new MutationObserver(function (records) {
+            if (retired) return;
+            if (!SQ.alive()) { retire(); return; }
             if (document.hidden) { needFull = true; return; }
             for (var i = 0; i < records.length; i++) {
                 var added = records[i].addedNodes;
@@ -123,9 +149,7 @@
         observer.observe(document.body, { childList: true, subtree: true });
 
         // Aba volta ao primeiro plano: uma varredura inteira cobre o que mudou enquanto estava escondida.
-        document.addEventListener('visibilitychange', function () {
-            if (!document.hidden) { needFull = true; scheduleScan(); }
-        });
+        document.addEventListener('visibilitychange', onVisible);
 
         scheduleScan();
         setTimeout(cacheZohoAuthorName, 2000);
@@ -770,7 +794,7 @@
         }
     }
 
-    function showNotification(message, type) {
+    function showNotification(message, type, ms) {
         var notification = document.createElement('div');
         notification.className = 'quick-replies-notification ' + (type || 'success');
         notification.setAttribute('role', 'status');
@@ -785,7 +809,7 @@
         setTimeout(function () {
             notification.classList.remove('show');
             setTimeout(function () { notification.remove(); }, 300);
-        }, 2000);
+        }, ms || 2000);
     }
 
     // --- Funcionalidade de WhatsApp ---
@@ -1138,6 +1162,7 @@
         try {
             if (globalThis.SQFieldHistory) globalThis.SQFieldHistory.tick(roots);
         } catch (err) {
+            if (!SQ.alive()) return retire();
             console.error('Study Quest: historico de campo falhou nesta varredura', err);
         }
     }
@@ -1147,6 +1172,7 @@
         try {
             if (globalThis.SQNotesPanel) globalThis.SQNotesPanel.tick();
         } catch (err) {
+            if (!SQ.alive()) return retire();
             console.error('Study Quest: painel de notas falhou nesta varredura', err);
         }
     }

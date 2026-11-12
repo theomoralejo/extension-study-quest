@@ -13,6 +13,8 @@
     'use strict';
 
     var rt = globalThis.browser || globalThis.chrome;
+    // So um script que nasceu com id de extensao pode ficar orfao; pagina de teste nao tem id.
+    var bornWithId = !!(rt && rt.runtime && rt.runtime.id);
 
     /**
      * Invoca `fn` no modelo que o navegador oferecer e normaliza para Promise.
@@ -58,6 +60,15 @@
         /** true quando rodando dentro de uma extensao (qualquer navegador). */
         available: !!(rt && rt.runtime),
 
+        /**
+         * false quando a extensao foi atualizada ou recarregada com a aba aberta: o script
+         * antigo continua na pagina, mas toda chamada a API lanca "Extension context invalidated".
+         */
+        alive: function () {
+            if (!bornWithId) return true;
+            try { return !!(rt.runtime && rt.runtime.id); } catch (e) { return false; }
+        },
+
         /** Le chaves do storage local. Resolve {} se indisponivel. */
         storageGet: function (keys) {
             var storage = rt && rt.storage && rt.storage.local;
@@ -91,9 +102,9 @@
 
         /** URL absoluta de um recurso empacotado na extensao. */
         getURL: function (path) {
-            if (rt && rt.runtime && rt.runtime.getURL) {
-                return rt.runtime.getURL(path);
-            }
+            try {
+                if (rt && rt.runtime && rt.runtime.getURL) return rt.runtime.getURL(path);
+            } catch (e) { /* contexto invalidado: o caminho relativo so nao carrega a imagem */ }
             return path;
         },
 

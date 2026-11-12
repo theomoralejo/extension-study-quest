@@ -145,6 +145,12 @@ thenable, é Promise; se veio `undefined`, o resultado chega pelo callback.
 Todos os métodos retornam Promise e resolvem um fallback em vez de rejeitar,
 para que a página continue funcionando fora do contexto da extensão.
 
+`alive()` responde `false` quando a extensão foi atualizada ou recarregada com a
+aba aberta: o Chrome não reinjeta o script novo e o antigo perde a API (toda
+chamada lança "Extension context invalidated"). O `content.js` checa isso a cada
+varredura e se aposenta (`retire()`): desliga o observer e os listeners, tira os
+botões da tela e mostra um aviso pedindo F5. Prova: bloco 4 de `tests/e2e-extensao.mjs`.
+
 ---
 
 ## Backend
