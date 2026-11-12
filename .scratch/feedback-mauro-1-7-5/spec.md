@@ -2,7 +2,7 @@ CRM: pendente de espelho (Cofre sem token neste Mac em 2026-11-11; criar tarefa 
 
 # Feedback do Mauro — extensão 1.7.5
 
-Status: entregue (commit 4413f5b, versão 1.7.5)
+Status: entregue (commit 4413f5b, versão 1.7.5); item do portal reaberto
 
 | Item | Estado |
 |---|---|
@@ -10,7 +10,7 @@ Status: entregue (commit 4413f5b, versão 1.7.5)
 | Tela travando ao colar nota grande (Windows) | feito: varredura pula `contenteditable` |
 | Copiar sem o título | feito: título + linha em branco + texto |
 | @menção em negrito azul, sem link | feito (formato da API não documentado: cobre link `@Nome`, `crm[user#id]crm` e `@Nome` de usuário do Zoho) |
-| Nota de portal do cliente "deixar mostrando" | feito na interpretação: selo "Visível no portal do cliente" no cabeçalho do cartão, sempre visível; aguardando confirmação do Theo |
+| Nota de portal do cliente "deixar mostrando" | REABERTO (Theo, 12/nov/2026): nota de portal = nota escrita pelo cliente no portal do Zoho; o cartão deve mostrar que veio de lá. O selo atual (`$is_shared_to_client`) marca outra coisa: nota da equipe compartilhada com o cliente. Bloqueado: a doc da API v8 de Notes não tem campo que marque nota criada no portal; falta ler uma nota real (Theo loga no Zoho no navegador do Traycer ou manda link de um Deal com nota do portal) |
 | Painel de notas redimensionável na diagonal | feito: cantos de baixo, tamanho salvo |
 | Setas para encostar à esquerda/direita | feito: no cabeçalho; direita → ←, esquerda → →, solto → as duas |
 
