@@ -2,7 +2,7 @@ CRM: pendente de espelho (Cofre sem token neste Mac em 2026-11-11; criar tarefa 
 
 # Feedback do Mauro — extensão 1.7.5
 
-Status: entregue (commit 4413f5b, versão 1.7.5); item do portal reaberto
+Status: encerrado (Theo testou e aprovou em 12/nov/2026; versão final 1.7.6). Selo "Veio do portal" dispensado pelo Theo.
 
 | Item | Estado |
 |---|---|
