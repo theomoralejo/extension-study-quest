@@ -30,6 +30,7 @@ FILES=(
   drag.js
   placeholders.js
   field-history.js
+  deal-info.js
   notes-panel.js
   popup.html
   popup.css

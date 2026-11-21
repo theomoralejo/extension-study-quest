@@ -19,9 +19,11 @@
   box-shadow: 0 0.5em 2em rgba(0, 0, 0, 0.18);
   font: 16px/1.5 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #1d2530;
 }
-.sqn-head { display: flex; align-items: center; gap: 0.5em; padding: 0.75em 0.875em; border-bottom: 1px solid #e6e9ed; }
-.sqn-title { font-size: 1.125em; }
-.sqn-count { font-size: 0.75em; color: #E95320; background: #fdeee6; border-radius: 999px; padding: 0.1em 0.5em; }
+.sqn-panel { container-type: inline-size; }
+.sqn-head { display: flex; flex-wrap: nowrap; align-items: center; gap: 0.5em; padding: 0.75em 0.875em; border-bottom: 1px solid #e6e9ed; min-width: 0; }
+.sqn-title { font-size: 1.125em; flex: none; }
+.sqn-count { flex: none; white-space: nowrap; font-size: 0.75em; color: #E95320; background: #fdeee6; border-radius: 999px; padding: 0.1em 0.5em; }
+.sqn-head .sqn-icon-btn { flex: none; }
 .sqn-count:empty { display: none; }
 .sqn-spacer { flex: 1; }
 .sqn-icon-btn { border: 0; background: none; color: #6b7480; font-size: 1.125em; width: 2em; height: 2em; border-radius: 0.375em; cursor: pointer; }
@@ -113,3 +115,99 @@
   background: linear-gradient(45deg, #9aa3ad 0 12%, transparent 12% 30%, #9aa3ad 30% 40%, transparent 40%); }
 .sqn-grip-right { right: 0; cursor: nwse-resize; border-bottom-right-radius: 0.75em;
   background: linear-gradient(-45deg, #9aa3ad 0 12%, transparent 12% 30%, #9aa3ad 30% 40%, transparent 40%); }
+
+/* ---- Deal: selos na linha do titulo (deal-info). Sempre UMA linha: encolhe, nunca quebra. ---- */
+.sqn-head:has(.sqn-badges:not(:empty)) { gap: 0.375em; }
+.sqn-head:has(.sqn-badges:not(:empty)) .sqn-icon-btn { width: 1.75em; height: 1.75em; }
+.sqn-badges { display: flex; flex-wrap: nowrap; align-items: center; gap: 0.3em; min-width: 0; flex: 0 1 auto; overflow: hidden; }
+.sqn-badges:empty { display: none; }
+.sqn-pill { display: inline-flex; align-items: center; gap: 0.3em; flex: none; white-space: nowrap; overflow: hidden;
+  font-size: 0.75em; line-height: 1.5; border-radius: 999px; padding: 0.1em 0.55em; }
+.sqn-ico { fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.sqn-pill .sqn-ico { width: 1.05em; height: 1.05em; flex: none; }
+.sqn-pill-label { flex: none; }
+.sqn-pill-value { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.sqn-pill-dsa { color: #fff; font-weight: 700; }
+.sqn-pill-speak { background: #EEEDFE; color: #3C3489; }
+.sqn-pill-deals { background: #E6F1FB; color: #0C447C; }
+/* o unico que encolhe: o valor corta com "..." e o selo de dias fica */
+.sqn-pill-acm { flex: 0 1 auto; min-width: 3.6em; background: #E1F5EE; color: #085041; padding-right: 0.2em; }
+.sqn-pill-num { flex: none; background: #fff; color: #085041; font-weight: 700; border-radius: 999px; padding: 0 0.45em; }
+/* abaixo de 640px (a largura padrao e 448px): "Speaking" e "Qnt. Deals" viram so icone + numero (texto no tooltip) */
+@container (max-width: 640px) {
+  .sqn-pill-speak .sqn-pill-label, .sqn-pill-deals .sqn-pill-label { display: none; }
+  .sqn-pill { padding: 0.1em 0.45em; }
+  .sqn-pill-acm { padding-right: 0.2em; }
+  .sqn-head:has(.sqn-badges:not(:empty)) { gap: 0.3em; }
+  .sqn-head:has(.sqn-badges:not(:empty)) .sqn-icon-btn { width: 1.5em; }
+}
+/* painel estreito ate a largura minima (288px): o titulo "Notas" sai (a aba e o contador ja dizem) e os botoes estreitam */
+/* ate 520px (inclui a largura padrao, 448px): o titulo "Notas" sai para o valor do All Conditions caber inteiro;
+   o contador "X notas" e a aba "Notas" continuam dizendo que painel e este */
+@container (max-width: 520px) {
+  .sqn-head:has(.sqn-badges:not(:empty)) .sqn-title { display: none; }
+}
+@container (max-width: 420px) { .sqn-pill-acm .sqn-ico { display: none; } }
+@container (max-width: 340px) {
+  .sqn-head { padding-left: 0.625em; padding-right: 0.375em; }
+  .sqn-head:has(.sqn-badges:not(:empty)) .sqn-icon-btn { width: 1.5em; }
+  .sqn-badges { gap: 0.2em; }
+  .sqn-pill { gap: 0.2em; padding: 0.1em 0.35em; }
+  .sqn-pill-dsa .sqn-pill-label { display: none; } /* fica "No"/"Yes" na cor do DSA; tooltip "DSA: No" */
+  .sqn-pill-acm { min-width: 3em; padding-right: 0.15em; }
+}
+/* largura minima: Speaking e Qnt. Deals ficam so o numero, na cor de cada um (tooltip diz o que e) */
+@container (max-width: 300px) {
+  .sqn-pill-speak .sqn-ico, .sqn-pill-deals .sqn-ico { display: none; }
+}
+
+/* painel solto: as duas setas aparecem (um botao a mais), entao o mesmo corte comeca antes */
+@container (max-width: 480px) {
+  .sqn-head:has(.sqn-badges:not(:empty)):has(.sqn-icon-btn:not([hidden]) ~ .sqn-icon-btn:not([hidden]) ~ .sqn-icon-btn:not([hidden]) ~ .sqn-icon-btn:not([hidden])) .sqn-title { display: none; }
+}
+@container (max-width: 300px) {
+  .sqn-head:has(.sqn-icon-btn:not([hidden]) ~ .sqn-icon-btn:not([hidden]) ~ .sqn-icon-btn:not([hidden]) ~ .sqn-icon-btn:not([hidden])) .sqn-pill-acm { min-width: 2.2em; }
+  .sqn-head:has(.sqn-icon-btn:not([hidden]) ~ .sqn-icon-btn:not([hidden]) ~ .sqn-icon-btn:not([hidden]) ~ .sqn-icon-btn:not([hidden])) .sqn-icon-btn { width: 1.3em; }
+}
+
+/* ---- Deal: grade 2x3 + Important notes ---- */
+.sqn-deal { flex: none; background: #fff; }
+.sqn-deal[hidden], .sqn-imp-wrap:empty { display: none; }
+.sqn-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.5em 0.75em; padding: 0.625em 0.875em; border-bottom: 1px solid #e6e9ed; }
+.sqn-cell { min-width: 0; }
+.sqn-cell-label { font-size: 0.6875em; color: #6b7480; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sqn-cell-value { display: flex; align-items: center; gap: 0.35em; min-width: 0; font-size: 0.8125em; line-height: 1.4; }
+.sqn-cell-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sqn-days { flex: none; font-size: 0.85em; font-weight: 700; border-radius: 999px; padding: 0 0.45em; line-height: 1.5; }
+.sqn-days-ok { background: #EAF3DE; color: #27500A; }
+.sqn-days-warn { background: #FAEEDA; color: #633806; }
+.sqn-days-late { background: #FCEBEB; color: #791F1F; }
+.sqn-deal-msg { grid-column: 1 / -1; font-size: 0.8125em; color: #6b7480; }
+.sqn-deal-err { color: #b42318; }
+@container (max-width: 330px) { .sqn-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+.sqn-imp-wrap { padding: 0.625em 0.875em 0; }
+.sqn-imp { background: #FFFBF2; border: 1px solid #FAC775; border-radius: 0.5em; padding: 0.375em 0.75em 0.5em; color: #4A2C05; }
+.sqn-imp-closed { padding-bottom: 0.375em; }
+.sqn-imp-bar { display: flex; align-items: center; gap: 0.5em; min-width: 0; }
+.sqn-imp-bar-click { cursor: pointer; }
+.sqn-imp-title { display: inline-flex; align-items: center; gap: 0.4em; font-weight: 600; font-size: 0.875em; color: #633806; white-space: nowrap; }
+.sqn-imp-title .sqn-ico, .sqn-imp-act .sqn-ico { width: 1.1em; height: 1.1em; flex: none; }
+.sqn-imp-act { display: inline-flex; align-items: center; gap: 0.25em; border: 0; background: none; padding: 0.1em 0.2em; border-radius: 0.25em;
+  font-family: inherit; font-size: 0.8125em; font-weight: 600; color: #633806; cursor: pointer; white-space: nowrap; flex: none; }
+.sqn-imp-edit { color: #0067A6; }
+.sqn-imp-act:hover { background: #FCEFD6; }
+.sqn-imp-act:focus-visible, .sqn-imp-add:focus-visible { outline: 2px solid #0067A6; outline-offset: 1px; }
+.sqn-imp-text { margin-top: 0.25em; font-size: 0.875em; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 9em; overflow-y: auto; }
+.sqn-imp-input { display: block; width: 100%; box-sizing: border-box; margin-top: 0.375em; min-height: 4.5em; max-height: 30vh; resize: vertical;
+  font: inherit; font-size: 0.875em; color: #1d2530; background: #fff; border: 1px solid #F2A93B; border-radius: 0.5em; padding: 0.5em 0.625em; }
+.sqn-imp-input:focus { outline: 2px solid #F2A93B; outline-offset: -1px; }
+.sqn-imp-row { display: flex; justify-content: flex-end; gap: 0.5em; margin-top: 0.5em; }
+.sqn-imp-cancel { background: #fff; color: #3a4350; border: 1px solid #d0d5dc; border-radius: 0.5em; padding: 0.35em 0.9em; font-family: inherit; font-size: 0.875em; cursor: pointer; }
+.sqn-imp-save { background: #0067A6; color: #fff; border: 0; border-radius: 0.5em; padding: 0.35em 1em; font-family: inherit; font-size: 0.875em; font-weight: 600; cursor: pointer; }
+.sqn-imp-save:hover:not(:disabled) { background: #004773; }
+.sqn-imp-save:disabled, .sqn-imp-cancel:disabled { opacity: 0.6; cursor: wait; }
+.sqn-imp-add { border: 0; background: none; padding: 0; color: #0067A6; font-family: inherit; font-size: 0.8125em; font-weight: 600; cursor: pointer; }
+.sqn-imp-add:hover { text-decoration: underline; }
+.sqn-imp-ok { margin-top: 0.375em; font-size: 0.8125em; color: #0B4F38; }
+.sqn-imp-err { margin-top: 0.375em; font-size: 0.8125em; color: #b42318; }

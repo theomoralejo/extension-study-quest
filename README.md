@@ -83,6 +83,9 @@ npm test
 - `bench-desempenho.mjs` — mede o JS gasto em 10 s de página viva, com e sem a
   extensão (`node tests/bench-desempenho.mjs [pasta-da-extensao]`). 1.6.0:
   ~3.900 ms; 1.7.0: ~3 ms.
+- `test-deal-info.mjs` — cabeçalho do Deal no painel de notas (1.8.0): selos, grade 2×3,
+  Important notes editável, linha de selos em uma linha de 760px até 288px. Doc:
+  `docs/painel-notas-cabecalho-deal.md`.
 - `test-notas.mjs` — painel de notas: lista, texto rico, editar/excluir,
   menções `@` (texto, link do Zoho e `crm[user#id]crm`; e-mail não vira
   menção), selo do portal do cliente, setas de encostar e cantos de tamanho.
@@ -102,6 +105,7 @@ manifest.json      MV3, com as chaves de Firefox e Safari
 browser-api.js     camada de compatibilidade entre chrome.* e browser.*
 config.js          fonte única da URL da API e dos headers
 field-history.js   histórico de alteração de campo (Deal e Lead)
+deal-info.js       cabeçalho do Deal no painel de notas (selos, grade, Important notes)
 drag.js            painéis arrastáveis pelo cabeçalho, posição lembrada no storage
 placeholders.js    #Campo nas respostas: troca pelo valor do registro aberto
 content.js         injeta painel, WhatsApp, copiar; e é o dono do observer e do despachante
