@@ -255,7 +255,8 @@
             if (!own || own.length > 200) continue;
             var key = norm(own);
             if (!key || key.length > 60 || !labels.has(key)) continue;
-            if (node.closest && node.closest(".zfh-pop, .zfh-icon")) continue;
+            // .sqn-*: painel de Notas da propria extensao (rotulos "Stage", "DSA"... do cabecalho do Deal nao sao campos da tela)
+            if (node.closest && node.closest(".zfh-pop, .zfh-icon, .sqn-panel, .sqn-tab")) continue;
             if (/^(A|BUTTON|OPTION|SELECT|TEXTAREA|SCRIPT|STYLE|TITLE)$/.test(node.tagName)) continue;
             if (isTimelineText(node)) continue;
             node.dataset.zfh = "1";

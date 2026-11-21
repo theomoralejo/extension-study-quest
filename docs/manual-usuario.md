@@ -37,3 +37,10 @@ Com o Zoho aberto durante a atualização, a extensão some da aba e aparece o a
 
 ## Desempenho
 A partir da 1.7.0 a extensão só trabalha no que mudou na tela e para quando a aba do Zoho está em segundo plano.
+
+## Notas: cabeçalho do Deal (1.8.0)
+Em um Deal, o painel de **Notas** mostra no topo:
+- Na linha do título: **DSA** (verde = No, vermelho = Yes), **Speaking**, **Qnt. Deals** (Deals do mesmo contato) e **All Conditions Met** com os dias (Days of Unco.). Com o painel estreito, alguns rótulos viram só ícone e número; passe o mouse para ver o texto completo.
+- Uma grade com Deal owner, Submitted by, Stage (com os dias na etapa), Student rep, Student consultant e Assessment tracker (com os dias). Dias em verde até 6, âmbar de 7 a 14, vermelho acima de 14. Campo vazio aparece como "-".
+- A caixa amarela **Important notes**: **hide**/**show** (ou clique no título) fecha e abre, e o painel lembra a escolha. **Edit** abre o texto para editar; **Save** grava no Deal, **Cancel** desfaz. Sem nota importante, aparece **+ Add important note**.
+- O botão ↻ e a troca de Deal atualizam tudo. Se o Zoho não liberar esses dados, aparece um aviso curto e as notas continuam funcionando.

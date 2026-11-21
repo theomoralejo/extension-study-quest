@@ -12,6 +12,9 @@
  * PUT/DELETE /Notes/{id}), com a sessao da aba via `SQZoho`. Chamado pelo
  * observer unico do `content.js` via `tick()`.
  *
+ * Em Deals, `deal-info.js` (SQDealInfo) acrescenta selos, grade e Important
+ * notes; ele recarrega junto com `load()` (botao ↻ e troca de registro).
+ *
  * Expoe `globalThis.SQNotesPanel = { tick }`.
  */
 (function () {
@@ -383,6 +386,8 @@
 
         panel.appendChild(head);
         panel.appendChild(listEl);
+        // selos, grade e Important notes do Deal (deal-info.js); falha dele nao afeta as notas
+        if (globalThis.SQDealInfo) globalThis.SQDealInfo.mount(head, countEl, listEl);
         panel.appendChild(statusEl);
         panel.appendChild(form);
         document.body.appendChild(panel);
@@ -727,6 +732,7 @@
         }
         try {
             current.module = await resolveModule(current.tab);
+            if (globalThis.SQDealInfo) globalThis.SQDealInfo.load(current); // em paralelo; erro fica contido la
             var notes = await fetchNotes(current);
             if (seq !== loadSeq) return;
             render(notes);
@@ -815,6 +821,7 @@
         if (current && input) drafts[current.id] = { title: titleInput.value, html: input.innerHTML, shared: shareBox.checked };
         current = { tab: rec.tab, module: null, id: rec.id };
         if (!tab) build();
+        if (globalThis.SQDealInfo) globalThis.SQDealInfo.clear(); // nada do Deal anterior fica na tela
         var draft = drafts[rec.id] || { title: "", html: "", shared: false };
         setEditor(draft.html);
         setTitle(draft.title);
