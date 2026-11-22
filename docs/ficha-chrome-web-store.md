@@ -2,7 +2,7 @@
 
 **Preparada em 22/nov/2026 para a versão 1.9.0. Nada submetido.** Quem envia: o Theo, com a conta de
 desenvolvedor da Attrio (editor **Attrio Studio**). Permissões: [justificativa](justificativa-permissoes-chrome-web-store.md).
-Privacidade: [texto da política](spec-politica-privacidade-extensao.md) (a publicar numa URL pública antes do envio).
+Privacidade: [texto da política](spec-politica-privacidade-extensao.md), publicada em https://attriostudio.com/privacidade-extensao-study-quest/ (página 3068 do WordPress da Attrio, 22/nov/2026).
 
 ## O arquivo
 
@@ -24,7 +24,7 @@ Privacidade: [texto da política](spec-politica-privacidade-extensao.md) (a publ
 | Idioma | Português (Brasil) |
 | Ícone | `icons/icon128.png` |
 | Site / suporte | https://attriostudio.com · info@attriostudio.com |
-| Política de privacidade | URL pública da [política](spec-politica-privacidade-extensao.md) (a publicar) |
+| Política de privacidade | https://attriostudio.com/privacidade-extensao-study-quest/ |
 
 ### Resumo em inglês (referência; a loja usa o do manifesto)
 
@@ -104,7 +104,7 @@ Texto para colar (inglês):
 | Servidor com `/api/auth/session` e Bearer em produção | 🔴 Pendente (trabalho paralelo na API; a 1.9.0 não funciona sem ele) |
 | Feature flag `study_quest_extension` na Master Table | 🔴 Pendente (lado Master Table) |
 | Conta de revisão na Master Table | 🔴 A criar pelo TI; senha no Cofre |
-| Política publicada numa URL pública | 🔴 A publicar ([texto pronto](spec-politica-privacidade-extensao.md)) |
+| Política publicada numa URL pública | ✅ https://attriostudio.com/privacidade-extensao-study-quest/ |
 | Capturas 1280 × 800 | A produzir com dados fictícios |
 | Pacote | `./scripts/build.sh` → `dist/study-quest-extension-chrome-1.9.0.zip` |
 
