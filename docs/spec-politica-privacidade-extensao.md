@@ -1,6 +1,6 @@
 # Política de privacidade da Study Quest Extension
 
-**Texto pronto para publicar numa URL pública (versão 1.9.0, 22/nov/2026).** Abaixo, o texto que vai ao ar.
+**Publicada em https://attriostudio.com/privacidade-extensao-study-quest/** (página 3068 do WordPress da Attrio, 22/nov/2026; decisão do Theo: site da Attrio). Mudou o texto aqui? Atualize a página no mesmo dia.
 
 ---
 
