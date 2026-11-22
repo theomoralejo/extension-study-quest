@@ -84,9 +84,9 @@ Tile pequeno (440 × 280 px): logo da Study Quest sobre fundo azul `#0067A6` cha
 
 ## Aba "Test instructions" (Instruções de teste)
 
-A extensão não funciona sem login. Antes do envio, o TI da Study Quest cria na Master Table uma conta de revisão
-(papel com a feature flag `study_quest_extension` ligada, sem verificação em duas etapas, sem acesso a outras telas)
-e guarda a senha no Cofre da Attrio. A senha vai **só** no campo do painel, nunca neste arquivo.
+A extensão não funciona sem login. **Conta de revisão criada em 22/nov/2026** (decisão do Theo): `revisor-extensao@attriostudio.com`,
+papel User (Visualizador) na Master Table, com a flag `study_quest_extension`. Senha: Cofre da Attrio, entrada 4083.
+A senha vai **só** no campo do painel, nunca neste arquivo. **Desativar a conta (campo `inactive`) assim que a loja aprovar.**
 
 Texto para colar (inglês):
 
@@ -97,7 +97,7 @@ Texto para colar (inglês):
 > 4. The other features (insert a reply into a Zoho CRM note, notes panel, WhatsApp and copy buttons, field history) run inside the Study Quest Zoho CRM (crm.zoho.com / crm.zoho.eu), which requires a Study Quest Zoho account and cannot be provided to reviewers.
 > 5. "Sair" signs out and the popup goes back to the sign-in card.
 >
-> Test account: email [a fornecer no painel] · password [a fornecer no painel]
+> Test account: email revisor-extensao@attriostudio.com · password: [colar do Cofre da Attrio, entrada 4083]
 
 ## Antes de submeter
 
@@ -105,7 +105,7 @@ Texto para colar (inglês):
 |---|---|
 | Servidor com `/api/auth/session` e Bearer em produção | ✅ No ar desde 22/nov/2026 (login real provado) |
 | Feature flag `study_quest_extension` na Master Table | ✅ No ar (master-table #305) |
-| Conta de revisão na Master Table | 🔴 Decisão do Theo pendente (conta própria, papel "User", desativada depois) |
+| Conta de revisão na Master Table | ✅ `revisor-extensao@attriostudio.com` (Cofre 4083); desativar depois da aprovação |
 | Política publicada numa URL pública | ✅ https://attriostudio.com/privacidade-extensao-study-quest/ |
 | Capturas 1280 × 800 e tile 440 × 280 | ✅ [`docs/assets/loja-2026-11-22/`](assets/loja-2026-11-22/), dados fictícios |
 | Pacote | ✅ [release v1.9.0](https://github.com/theomoralejo/extension-study-quest/releases/download/v1.9.0/study-quest-extension-chrome-1.9.0.zip) · SHA-256 `d212bf1ddba94bb2387ce97850064bd2aff1ecebc674fb2fd5398557632778ac` |
