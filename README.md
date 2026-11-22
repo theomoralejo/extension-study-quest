@@ -5,7 +5,8 @@ WhatsApp nos telefones, botão de copiar nos campos de valor e **histórico de a
 de cada campo** (ícone de relógio ao lado do nome do campo, em Deal e Lead).
 
 **Status:** roda em Chrome, Edge, Firefox e Safari (macOS).
-As respostas ficam numa API própria (`cv.studyquestuk.com/api`), não no storage do navegador.
+As respostas ficam numa API própria (`cv.attriostudio.com/api`), não no storage do navegador.
+Desde a 1.9.0 a extensão exige **login com o e-mail e a senha da Master Table** ([Login](#login-master-table)).
 
 ---
 
@@ -19,7 +20,45 @@ As respostas ficam numa API própria (`cv.studyquestuk.com/api`), não no storag
 | Safari | ✅ (macOS 13+) | requer app nativo — ver [Safari](#safari) abaixo |
 
 Firefox exige 140+ porque a chave `data_collection_permissions`, obrigatória para
-publicar, só existe a partir dessa versão.
+publicar, só existe a partir dessa versão. A 1.9.0 declara `personallyIdentifyingInfo` e `authenticationInfo` (login).
+
+Chrome Web Store (não listada): [ficha](docs/ficha-chrome-web-store.md), [permissões e dados](docs/justificativa-permissoes-chrome-web-store.md),
+[política de privacidade](docs/spec-politica-privacidade-extensao.md).
+
+---
+
+## Login (Master Table)
+<a id="login-master-table"></a>
+
+Até a 1.8.0 a extensão mandava uma chave fixa (`x-api-key`) escrita no código. O repositório é público:
+qualquer pessoa lia, editava e apagava as respostas. A 1.9.0 tira a chave e passa a exigir login por pessoa.
+Contrato completo: `.scratch/login-master-table/spec.md`.
+
+```
+popup ──POST {identity,password}──▶ Master Table /api/collections/users/auth-with-password ──▶ {token PB}
+popup ──POST {pbToken}───────────▶ API /api/auth/session ──(confere na Master Table)──▶ 201 {token, name, email, expiresAt}
+popup/painel ──Authorization: Bearer <token>──▶ API /api/replies*, /api/categories*
+```
+
+- **`sessao.js`** é o único módulo de sessão (`globalThis.SQSessao`), carregado no popup e no content script:
+  `ler()`, `gravar(s)`, `apagar()`, `api(path, {method, body})`, `entrar(email, senha)`, `sair()`, `onMudar(fn)`.
+- **`sqSessao`** em `storage.local` = `{token, name, email, expiresAt}` e nada mais. A senha e o token PB vivem só
+  dentro de `entrar()` e nunca são gravados. `expiresAt` no passado = sem sessão.
+- **`api()`** põe o `Authorization: Bearer`. Sem sessão, rejeita sem tocar a rede. **401** apaga `sqSessao` e rejeita
+  com `err.semSessao = true`: o popup volta ao card Entrar com o motivo; o painel do Zoho mostra o convite a entrar.
+- **Popup sem sessão:** só o card **Entrar** (o resto some, não fica desabilitado). Com sessão: "Conectado como
+  <nome>" + **Sair** (`DELETE /api/auth/session`, falha ignorada, e apaga `sqSessao`).
+- **Painel no Zoho** escuta `sqSessao` (`SQBrowser.onStorageChange`): entrar ou sair no popup troca a lista do
+  painel aberto sem recarregar a página.
+- **Autor** da resposta: o servidor assina com a sessão. O popup não manda mais `author`, e saiu o caminho que
+  lia o nome do usuário do Zoho (`getAuthor`, cache `zohoAuthor`, que o popup apaga ao abrir).
+- Erros do login, cada um com causa e o que fazer: senha errada (400), verificação em duas etapas (401 com
+  `mfaId`, não suportada), muitas tentativas (429), conta sem acesso (403 da API, com a mensagem da Master Table),
+  sem conexão. Toda chamada do login tem tempo limite de 15 s.
+
+**Transição no servidor:** `ACEITAR_CHAVE_ANTIGA=1` no `.env` da API aceita a `x-api-key` antiga enquanto o time
+troca de versão; cada uso vai ao log. Desligar assim que o time estiver na versão da loja. Enquanto estiver ligada,
+a chave antiga (que continua no histórico público do git) ainda abre a API.
 
 ---
 
@@ -48,6 +87,11 @@ npm run setup   # instala playwright + os três navegadores (uma vez)
 npm test
 ```
 
+- `test-sessao.mjs` — **Node puro, sem navegador** (`node tests/test-sessao.mjs`). Carrega o `sessao.js` real
+  com storage e `fetch` falsos: Bearer em toda chamada, sem sessão nenhuma chamada sai, 401 e sessão vencida
+  apagam `sqSessao`, o login grava só `{token,name,email,expiresAt}` (sem token PB, sem senha), cada erro do
+  login vira a mensagem certa, e nenhum arquivo do pacote (`FILES` do build) tem `x-api-key` ou a chave antiga.
+  Sabe reprovar: tirar o Bearer, gravar o objeto inteiro, não apagar no 401 ou ignorar `expiresAt` dá falha.
 - `test-unificacao.mjs` — **roda em Node puro, sem navegador e sem `setup`**
   (`node tests/test-unificacao.mjs`). Prova que histórico de campo e quick
   replies convivem num content script só: um único listener de mensagem, o
@@ -71,12 +115,11 @@ npm test
 - `test-recursos.mjs` — recursos da 1.7.0: `#Campo` trocado pelo valor do
   registro (e hashtag comum preservada), painéis arrastáveis com posição
   lembrada após recarregar, painel de notas que continua aberto com o rascunho,
-  botão Copiar (título + texto) e seletor de campos do popup; autor da resposta
-  vem do usuário logado no Zoho (`/users?type=CurrentUser`), não do cache, e
-  editar mantém o autor original.
+  botão Copiar (título + texto) e seletor de campos do popup; painel do Zoho
+  sem sessão mostra o convite a entrar e carrega a lista sozinho quando a sessão chega.
 - `e2e-extensao.mjs` — a extensão instalada de verdade num Chromium, com o
-  `crm.zoho.com` simulado: popup → aba do Deal → texto preenchido, sem
-  `chrome.*` falso. Pega o que só quebra instalado.
+  `crm.zoho.com`, a Master Table e a API simuladas por rota: login pelo popup →
+  aba do Deal → texto preenchido, sem `chrome.*` falso. Pega o que só quebra instalado.
 - `test-varredura.mjs` — a varredura incremental pega campo, telefone e editor
   que chegam depois, não faz nada em aba de fundo e não regrava o storage; texto
   colado num editor (`contenteditable`) não recebe ícone nenhum.
@@ -89,9 +132,12 @@ npm test
 - `test-notas.mjs` — painel de notas: lista, texto rico, editar/excluir,
   menções `@` (texto, link do Zoho e `crm[user#id]crm`; e-mail não vira
   menção), selo do portal do cliente, setas de encostar e cantos de tamanho.
-- `test-popup.mjs` — carrega `popup.html` **sem `chrome`/`browser` definidos**,
-  provando que a camada de compatibilidade degrada em vez de lançar, e checa
-  que nada estoura a largura em 320/390/400px.
+- `test-popup.mjs` — `popup.html` sem sessão (sem `chrome`/`browser` definidos:
+  a camada de compatibilidade degrada em vez de lançar; só o card Entrar, foco no
+  e-mail) e com sessão, sem nada estourar a largura em 320/390/400px; login de
+  ponta a ponta com `fetch` falso (Enter envia, "Entrando…", erro em `role=alert`,
+  "Conectado como", resposta sem `author`, Sair, 401 volta ao login).
+  `SHOTS=<pasta>` salva prints 390px; `MOTORES=chromium` roda só os motores instalados.
 
 Os testes são úteis porque **sabem reprovar**: rodados contra a versão anterior
 do código, dão 0/18 no painel (ele saía da tela em 5 das 6 posições).
@@ -103,13 +149,14 @@ do código, dão 0/18 no painel (ele saía da tela em 5 das 6 posições).
 ```
 manifest.json      MV3, com as chaves de Firefox e Safari
 browser-api.js     camada de compatibilidade entre chrome.* e browser.*
-config.js          fonte única da URL da API e dos headers
+config.js          fonte única das URLs (API das respostas e Master Table)
+sessao.js          login da Master Table, sessão `sqSessao` e chamadas com Bearer
 field-history.js   histórico de alteração de campo (Deal e Lead)
 deal-info.js       cabeçalho do Deal no painel de notas (selos, grade, Important notes)
 drag.js            painéis arrastáveis pelo cabeçalho, posição lembrada no storage
 placeholders.js    #Campo nas respostas: troca pelo valor do registro aberto
 content.js         injeta painel, WhatsApp, copiar; e é o dono do observer e do despachante
-popup.html/css/js  gestão das respostas rápidas + diagnóstico do histórico
+popup.html/css/js  login, gestão das respostas rápidas + diagnóstico do histórico
 styles.css         estilos do que é injetado na página do CRM
 field-history.css  estilos do histórico (prefixo .zfh-*)
 backend-api/       API Node/Express + MySQL (NÃO vai no pacote da extensão)
@@ -160,22 +207,18 @@ botões da tela e mostra um aviso pedindo F5. Prova: bloco 4 de `tests/e2e-exten
 ## Backend
 
 `backend-api/` roda separado da extensão. Configuração por variável de
-ambiente — copie `backend-api/.env.example` para `.env` e preencha:
-
-```
-DB_USER, DB_PASSWORD, API_KEY   # obrigatórios: a API não sobe sem eles
-DB_HOST, DB_NAME, PORT, ALLOWED_ORIGINS
-```
+ambiente — copie `backend-api/.env.example` para `.env` e preencha.
+A lista exata (banco, Master Table, sessões em `extension_sessions`) fica no `backend-api/.env.example`,
+reescrito junto com o login. `ACEITAR_CHAVE_ANTIGA=1` liga a transição descrita em [Login](#login-master-table).
 
 A API falha alto no boot se faltar um obrigatório. Isso é intencional: um
 fallback embutido no código significaria credencial conhecida em produção.
 
-### A chave da API não é um segredo
+### Sem chave no cliente
 
-Tudo que a extensão carrega é legível por qualquer pessoa que a instale ou
-desempacote o `.zip`. A `API_KEY` serve só para barrar tráfego anônimo casual
-— não é controle de acesso, e não deve ser reaproveitada em outro sistema.
-Autenticação de verdade precisa ser por usuário, validada no servidor.
+Tudo que a extensão carrega é legível por quem a instala ou desempacota o `.zip`; por isso o cliente não leva
+segredo nenhum. O acesso é por pessoa, conferido no servidor (sessão da Master Table + feature flag
+`study_quest_extension`). O `tests/test-sessao.mjs` reprova se `x-api-key` ou a chave antiga voltar a um arquivo do pacote.
 
 ---
 
