@@ -1,39 +1,32 @@
 /**
  * config.js — fonte unica de configuracao do cliente.
  *
- * ATENCAO sobre a chave: tudo que a extensao carrega e legivel por qualquer
- * pessoa que instale ou desempacote o .zip/.crx. A chave abaixo NAO e um
- * segredo — ela existe apenas para barrar trafego anonimo casual na API.
- * Nao trate como controle de acesso e nao reaproveite esse valor em nenhum
- * outro sistema. Autenticacao real precisa ser por usuario, no servidor.
+ * Nao ha chave nem segredo aqui: tudo que a extensao carrega e legivel por quem
+ * a instala. O acesso e por pessoa: login da Master Table, trocado no servidor
+ * por um token proprio da extensao (ver sessao.js).
  */
 (function () {
     'use strict';
 
     // Precisa ser o dominio FINAL, nunca um que redirecione.
     //
-    // `cv.studyquestuk.com` responde 301 para `cv.attriostudio.com`. Como as
-    // chamadas mandam o header `x-api-key`, elas deixam de ser "simple
+    // As chamadas mandam o header `Authorization`, entao deixam de ser "simple
     // requests" e o browser faz um preflight OPTIONS antes — e a spec do Fetch
     // trata redirect NA RESPOSTA DE PREFLIGHT como erro fatal: o browser nao
     // segue, aborta, e o content script recebe apenas "Failed to fetch".
-    // Por isso o `curl` funciona (segue o 301 alegremente) e a extensao nao.
+    // Por isso o `curl` funciona (segue o redirect) e a extensao nao.
     var API_BASE = 'https://cv.attriostudio.com/api';
-    var API_KEY = 'sq-54321-secret-key';
+
+    // Master Table (PocketBase): so o popup fala com ela, e so para o login.
+    var MASTER_TABLE_URL = 'https://api.master.studyquestuk.com';
 
     globalThis.SQConfig = {
         API_BASE: API_BASE,
+        MASTER_TABLE_URL: MASTER_TABLE_URL,
 
-        /** Monta a URL de um endpoint da API. */
+        /** Monta a URL de um endpoint da API das respostas. */
         url: function (path) {
             return API_BASE + path;
-        },
-
-        /** Headers padrao das chamadas. `json` inclui Content-Type. */
-        headers: function (json) {
-            var h = { 'x-api-key': API_KEY };
-            if (json) h['Content-Type'] = 'application/json';
-            return h;
         }
     };
 })();

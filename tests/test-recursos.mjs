@@ -26,12 +26,19 @@ const cs = manifest.content_scripts[0];
 const MIME = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".png": "image/png" };
 
 // Storage da extensao simulado sobre o localStorage da pagina: sobrevive ao reload.
+// Sessao valida semeada direto no localStorage: sem ela o painel mostra o convite a entrar.
+const SESSAO = { token: "tk", name: "Teste", email: "t@x", expiresAt: "2999-01-01T00:00:00Z" };
 const STORAGE_MOCK = `
+if (!localStorage.__sq) localStorage.__sq = JSON.stringify({ sqSessao: ${JSON.stringify(SESSAO)} });
 window.chrome = { runtime: { id: "t", getURL: (p) => "/" + p, onMessage: { addListener() {} } },
   storage: { local: {
     get(keys) { const all = JSON.parse(localStorage.__sq || "{}"); const out = {}; [].concat(keys).forEach((k) => { if (k in all) out[k] = all[k]; }); return Promise.resolve(out); },
-    set(items) { const all = JSON.parse(localStorage.__sq || "{}"); Object.assign(all, items); localStorage.__sq = JSON.stringify(all); window.__sets = (window.__sets || 0) + 1; return Promise.resolve(); }
-  } } };`;
+    set(items) { const all = JSON.parse(localStorage.__sq || "{}"); Object.assign(all, items); localStorage.__sq = JSON.stringify(all); window.__sets = (window.__sets || 0) + 1;
+      const ch = {}; Object.keys(items).forEach((k) => { ch[k] = { newValue: items[k] }; });
+      setTimeout(() => (window.__sqOuv || []).forEach((fn) => fn(ch, "local")), 0);
+      return Promise.resolve(); }
+  },
+  onChanged: { addListener(fn) { (window.__sqOuv = window.__sqOuv || []).push(fn); } } } };`;
 
 const editor = `<crux-note-editor id="editor" style="position:absolute;left:40px;top:40px;display:block;border:1px solid #ccc;padding:8px">
   <input class="cxNoteTitleInputElem" type="text"><div class="lyteEditorMainDiv" contenteditable="true" style="min-height:2em"></div>
@@ -267,44 +274,32 @@ async function abrir(urlPath, { recordStatus = 200, ctx = null } = {}) {
     await context.close();
 }
 
-// ---------- 3b. popup: autor e o usuario logado no Zoho, nao o cache ----------
+// 3b (autor pelo nome do Zoho) saiu na 1.9.0: o servidor assina com a sessao. Prova em test-popup.mjs.
+
+// ---------- 3c. painel do Zoho sem sessao: convite a entrar, e recarrega ao entrar ----------
 {
-    const context = await browser.newContext({ viewport: { width: 400, height: 700 } });
-    const p = await context.newPage();
-    await p.addInitScript(() => {
-        window.__envios = [];
-        const replies = [{ id: "9", title: "Antiga", text: "x", category: "Sales", author: "Carina" }];
-        window.fetch = (url, o) => {
-            if (o && o.method && o.method !== "GET") window.__envios.push({ method: o.method, body: JSON.parse(o.body || "{}") });
-            const out = o && o.method && o.method !== "GET" ? {} : replies;
-            return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(out), text: () => Promise.resolve(JSON.stringify(out)) });
-        };
-        window.chrome = {
-            runtime: { id: "t", getURL: (x) => x },
-            // cache com o nome errado, que chega antes da aba responder
-            storage: { local: { get: () => Promise.resolve({ zohoAuthor: "Ricarth" }), set: () => Promise.resolve() } },
-            tabs: {
-                query: () => Promise.resolve([{ id: 1, url: "https://crm.zoho.com/crm/org1/tab/Potentials/123" }]),
-                sendMessage: (id, m) => m.action === "getAuthor"
-                    ? new Promise((r) => setTimeout(() => r({ author: "Mauro Ribeiro" }), 400))
-                    : Promise.resolve(m.action === "fillText" ? { status: "ok", texts: m.texts } : null)
-            }
-        };
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    await ctx.addInitScript(() => { localStorage.__sq = "{}"; }); // sem sessao
+    const { page: p, context } = await abrir("/com-editor/crm/org1/tab/Potentials/123", { ctx });
+    await p.evaluate(() => {
+        window.__repliesGets = 0;
+        window.fetch = ((orig) => (url, o) => String(url).includes("/replies")
+            ? (window.__repliesGets++, Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve([{ id: "1", title: "Oi", text: "Olá", category: "Geral" }]), text: () => Promise.resolve("") }))
+            : orig(url, o))(window.fetch);
     });
-    await p.goto(BASE + "/popup.html");
-    await p.waitForSelector(".reply-item");
-    await p.fill("#replyTitle", "Nova");
-    await p.fill("#replyText", "Texto");
-    await p.click("#submitBtn"); // antes da aba responder: espera o nome
-    await p.waitForFunction(() => window.__envios.length === 1, null, { timeout: 3000 }).catch(() => {});
-    const novo = await p.evaluate(() => window.__envios[0]);
-    ok(novo && novo.method === "POST" && novo.body.author === "Mauro Ribeiro", "resposta nova leva o usuario logado no Zoho, nao o nome em cache", JSON.stringify(novo));
-    await p.click(".reply-item .btn-edit");
-    await p.fill("#replyText", "Texto editado");
-    await p.click("#submitBtn");
-    await p.waitForFunction(() => window.__envios.length === 2, null, { timeout: 3000 }).catch(() => {});
-    const ed = await p.evaluate(() => window.__envios[1]);
-    ok(ed && ed.method === "PUT" && ed.body.author === "Carina", "editar mantem quem criou a resposta", JSON.stringify(ed));
+    await p.waitForSelector(".quick-replies-btn", { timeout: 8000 });
+    await p.click(".quick-replies-btn");
+    await p.waitForSelector(".quick-replies-login-hint", { timeout: 3000 }).catch(() => {});
+    const convite = await p.textContent(".quick-replies-login-hint").catch(() => "");
+    ok(convite === "Entre na extensão para ver as respostas rápidas: clique no ícone da Study Quest na barra do navegador e use o login da Master Table.",
+        "sem sessao, o painel mostra o convite a entrar (nao um erro)", convite);
+    ok(await p.isHidden(".quick-replies-search"), "sem sessao, busca e filtro somem");
+    ok((await p.evaluate(() => window.__repliesGets)) === 0, "sem sessao, nenhuma chamada a /replies");
+    // login no popup = sessao aparece no storage: o painel aberto recarrega sozinho
+    await p.evaluate((s) => window.chrome.storage.local.set({ sqSessao: s }), SESSAO);
+    await p.waitForSelector(".quick-reply-item", { timeout: 3000 }).catch(() => {});
+    ok(await p.isVisible(".quick-reply-item"), "sessao chegou: o painel aberto carrega as respostas sem recarregar a pagina");
+    ok(await p.isVisible(".quick-replies-search"), "com sessao, busca e filtro voltam");
     await context.close();
 }
 
@@ -312,13 +307,13 @@ async function abrir(urlPath, { recordStatus = 200, ctx = null } = {}) {
 {
     const context = await browser.newContext({ viewport: { width: 400, height: 700 }, permissions: ["clipboard-read", "clipboard-write"] });
     const p = await context.newPage();
-    await p.addInitScript(() => {
+    await p.addInitScript((SESSAO) => {
         const replies = [{ id: "1", title: "Lead Handover", text: "Linha 1\nLinha 2 com #Deal_Name", category: "Sales", author: "Carina" }];
         window.fetch = () => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(replies), text: () => Promise.resolve(JSON.stringify(replies)) });
         const fields = { module: "Deal", fields: [{ api: "Deal_Name", label: "Deal Name", value: "Maria Silva" }, { api: "Stage", label: "Stage", value: "" }] };
         window.chrome = {
             runtime: { id: "t", getURL: (x) => x },
-            storage: { local: { get: () => Promise.resolve({}), set: () => Promise.resolve() } },
+            storage: { local: { get: () => Promise.resolve({ sqSessao: SESSAO }), set: () => Promise.resolve() } },
             tabs: {
                 query: () => Promise.resolve([{ id: 1, url: window.__tabUrl || "https://crm.zoho.com/crm/org1/tab/Potentials/123" }]),
                 sendMessage: (id, m) => Promise.resolve(m.action === "recordFields" ? (window.__semRegistro ? null : fields)
@@ -326,7 +321,7 @@ async function abrir(urlPath, { recordStatus = 200, ctx = null } = {}) {
                     : null)
             }
         };
-    });
+    }, SESSAO);
     await p.goto(BASE + "/popup.html");
     await p.waitForSelector(".reply-item");
     const ordem = await p.$$eval(".reply-actions button", (bs) => bs.map((b) => b.textContent));
@@ -392,12 +387,12 @@ async function abrir(urlPath, { recordStatus = 200, ctx = null } = {}) {
 
     const ctx2 = await browser.newContext({ viewport: { width: 400, height: 700 } });
     const p2 = await ctx2.newPage();
-    await p2.addInitScript(() => {
+    await p2.addInitScript((SESSAO) => {
         window.__semRegistro = true;
         window.fetch = () => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve([]), text: () => Promise.resolve("[]") });
-        window.chrome = { runtime: { id: "t" }, storage: { local: { get: () => Promise.resolve({}), set: () => Promise.resolve() } },
+        window.chrome = { runtime: { id: "t" }, storage: { local: { get: () => Promise.resolve({ sqSessao: SESSAO }), set: () => Promise.resolve() } },
             tabs: { query: () => Promise.resolve([{ id: 1, url: "https://crm.zoho.com/crm/org1/tab/Potentials/list" }]), sendMessage: () => Promise.resolve(null) } };
-    });
+    }, SESSAO);
     await p2.goto(BASE + "/popup.html");
     await p2.click("#btnFields");
     await p2.waitForFunction(() => document.getElementById("fieldPickerStatus").textContent.includes("Abra um registro"));
@@ -411,12 +406,12 @@ async function abrir(urlPath, { recordStatus = 200, ctx = null } = {}) {
     // popup aberto fora do registro: usa a ultima lista de campos vista
     const ctx3 = await browser.newContext({ viewport: { width: 400, height: 700 } });
     const p3 = await ctx3.newPage();
-    await p3.addInitScript(() => {
+    await p3.addInitScript((SESSAO) => {
         window.fetch = () => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve([]), text: () => Promise.resolve("[]") });
-        const cache = { sqFieldsCache: { module: "Deal", fields: [{ api: "Deal_Name", label: "Deal Name" }] } };
+        const cache = { sqSessao: SESSAO, sqFieldsCache: { module: "Deal", fields: [{ api: "Deal_Name", label: "Deal Name" }] } };
         window.chrome = { runtime: { id: "t" }, storage: { local: { get: () => Promise.resolve(cache), set: () => Promise.resolve() } },
             tabs: { query: () => Promise.resolve([{ id: 1, url: "https://mail.google.com/" }]), sendMessage: () => Promise.resolve(null) } };
-    });
+    }, SESSAO);
     await p3.goto(BASE + "/popup.html");
     await p3.click("#replyText");
     await p3.keyboard.type("#de");

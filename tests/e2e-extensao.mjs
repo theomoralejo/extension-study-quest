@@ -46,7 +46,20 @@ await context.route("https://crm.zoho.com/**", async (route) => {
     if (url.pathname.includes("/crm/v")) return route.fulfill({ status: 204, body: "" });
     return route.fulfill({ contentType: "text/html", body: "<!doctype html><html><body><h1>Deal</h1></body></html>" });
 });
-await context.route("https://cv.attriostudio.com/**", (route) => route.fulfill({ json: REPLIES }));
+// Login falso de ponta a ponta: nenhuma chamada sai para a Master Table nem para a API reais.
+const pedidos = [];
+await context.route("https://api.master.studyquestuk.com/**", (route) => {
+    pedidos.push(route.request().url());
+    return route.fulfill({ json: { token: "PB-FALSO", record: { id: "u1" } } });
+});
+await context.route("https://cv.attriostudio.com/**", (route) => {
+    const req = route.request();
+    pedidos.push(req.method() + " " + req.url() + " " + (req.headers().authorization || "-"));
+    if (req.url().endsWith("/api/auth/session")) {
+        return route.fulfill({ status: 201, json: { token: "EXT-FALSO", name: "Taz", email: "taz@x", expiresAt: "2999-01-01T00:00:00Z" } });
+    }
+    return route.fulfill({ json: REPLIES });
+});
 
 const deal = await context.newPage();
 await deal.goto(DEAL);
@@ -59,7 +72,17 @@ const extId = await ext.locator("extensions-item").first().getAttribute("id");
 ok(!!extId, "extensao carregada no Chromium", String(extId));
 
 await ext.goto(`chrome-extension://${extId}/popup.html`);
+// 0. sem sessao: so o login; entrar pelo popup instalado de verdade
+await ext.waitForSelector("#loginForm:not(.is-hidden)");
+ok(await ext.isHidden("#replyForm"), "extensao instalada sem sessao: so o card Entrar aparece");
+await ext.fill("#loginEmail", "taz@x");
+await ext.fill("#loginPassword", "senha-falsa");
+await ext.press("#loginPassword", "Enter");
 await ext.waitForSelector(".reply-item");
+const guardado = await ext.evaluate(() => chrome.storage.local.get("sqSessao"));
+ok(guardado.sqSessao && guardado.sqSessao.token === "EXT-FALSO" && !JSON.stringify(guardado).includes("PB-FALSO") && !JSON.stringify(guardado).includes("senha-falsa"),
+    "login no popup instalado grava so a sessao da extensao", JSON.stringify(guardado));
+ok(pedidos.some((p) => p.includes("/api/replies") && p.endsWith("Bearer EXT-FALSO")), "lista pedida com o Bearer da sessao", pedidos.join(" | "));
 const tabId = await ext.evaluate(async () => (await chrome.tabs.query({ url: "https://crm.zoho.com/*" }))[0].id);
 
 // 1. mensagem real popup -> content script

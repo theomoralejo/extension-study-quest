@@ -25,6 +25,7 @@ FILES=(
   manifest.json
   browser-api.js
   config.js
+  sessao.js
   content.js
   zoho-api.js
   drag.js
@@ -77,11 +78,29 @@ fi
 VERSION="$(python3 -c "import json;print(json.load(open('$ROOT/manifest.json'))['version'])")"
 echo "==> versao $VERSION"
 
+# `zip` nao vem instalado em todo Linux; sem ele, o zipfile do Python faz o mesmo pacote.
+empacotar() {
+  if command -v zip >/dev/null 2>&1; then
+    ( cd "$STAGE" && zip -qr "$1" . )
+  else
+    python3 - "$STAGE" "$1" <<'PY'
+import os, sys, zipfile
+src, out = sys.argv[1], sys.argv[2]
+with zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED) as z:
+    for base, dirs, files in os.walk(src):
+        dirs.sort()
+        for f in sorted(files):
+            full = os.path.join(base, f)
+            z.write(full, os.path.relpath(full, src))
+PY
+  fi
+}
+
 echo "==> zip Chrome / Edge"
-( cd "$STAGE" && zip -qr "$DIST/study-quest-extension-chrome-$VERSION.zip" . )
+empacotar "$DIST/study-quest-extension-chrome-$VERSION.zip"
 
 echo "==> zip Firefox"
-( cd "$STAGE" && zip -qr "$DIST/study-quest-extension-firefox-$VERSION.zip" . )
+empacotar "$DIST/study-quest-extension-firefox-$VERSION.zip"
 
 echo "==> lint Firefox (web-ext)"
 npx --yes web-ext@latest lint --source-dir="$STAGE" --output=json > "$DIST/lint.json" 2>/dev/null || true

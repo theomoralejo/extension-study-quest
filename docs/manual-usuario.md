@@ -1,5 +1,23 @@
 # Manual do usuário — Study Quest Extension
 
+## Entrar (a partir da 1.9.0)
+1. Clique no ícone da Study Quest na barra do navegador. Sem login, o popup mostra só o card **Entrar**.
+2. Digite o **e-mail e a senha da Master Table** (o mesmo login do app da Master Table) e aperte Enter ou clique em **Entrar**.
+3. Pronto: o topo do popup mostra **Conectado como** e o seu nome. As respostas rápidas aparecem no popup e no painel dentro do Zoho (se o painel já estava aberto, ele carrega sozinho).
+4. Para sair, clique em **Sair**, ao lado do seu nome.
+
+O login vale por até 14 dias. Quando ele vence, o popup volta ao card **Entrar** com o aviso "Sua sessão expirou" e o painel do Zoho pede para entrar de novo.
+
+| Mensagem | O que fazer |
+|---|---|
+| E-mail ou senha incorretos | Use o mesmo e-mail e senha da Master Table. Esqueceu a senha? Troque pela Master Table. |
+| Sua conta da Master Table não tem acesso à extensão | Peça ao TI da Study Quest para liberar a extensão para você (Users & Roles → Feature flags). |
+| Verificação em duas etapas | A extensão ainda não aceita esse tipo de login. Peça ao TI uma conta sem verificação em duas etapas. |
+| Muitas tentativas | Espere um minuto e tente de novo. |
+| Sem conexão | Confira a internet e tente de novo. |
+
+A senha não fica guardada na extensão.
+
 ## Respostas rápidas com campos do registro (`#Campo`)
 1. Clique no ícone da extensão e preencha **Título** e **Texto da Resposta**.
 2. Para puxar um dado do Deal, digite `#` e o começo do campo (ex.: `#st`). A lista sugere os campos: setas para escolher, Enter ou Tab para completar, Esc para fechar.
@@ -15,7 +33,7 @@ Com um Deal aberto na aba, a lista **Minhas Respostas** (popup) e o painel de re
 Se o popup pedir para recarregar a página do Zoho, aperte F5 na aba do Zoho: isso acontece logo depois de atualizar a extensão.
 
 ## Quem criou a resposta
-A resposta nova é assinada com o usuário logado no Zoho da aba aberta. Editar uma resposta mantém quem a criou. Respostas salvas antes da 1.7.5 com o nome errado continuam com ele: edite o nome no backend ou recrie a resposta.
+A partir da 1.9.0, quem assina a resposta é o servidor, com o seu nome da Master Table (o do login da extensão). A extensão não lê mais o nome na tela do Zoho. Respostas antigas continuam com o nome que tinham.
 
 ## Notas: menções e portal do cliente
 - Quem foi mencionado com `@` aparece com o nome em **negrito azul**. O nome não é link.

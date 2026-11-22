@@ -81,7 +81,7 @@
     align-items: center;
     gap: 8px;
     padding: 14px 16px;
-    background: linear-gradient(135deg, var(--sq-primary) 0%, var(--sq-primary-dark) 100%);
+    background: var(--sq-primary);
     color: white;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
     z-index: 2;
@@ -273,6 +273,19 @@
 }
 
 /* Estados vazios e loading */
+/* Sem sessao: a lista vira um convite a entrar; busca e filtro somem (nao ha o que buscar). */
+.quick-replies-panel.quick-replies-sem-sessao .quick-replies-search {
+    display: none;
+}
+
+.quick-replies-login-hint {
+    padding: 32px 20px;
+    text-align: center;
+    color: #444;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
 .quick-replies-empty,
 .quick-replies-loading {
     text-align: center;

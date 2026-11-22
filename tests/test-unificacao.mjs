@@ -114,8 +114,9 @@ ok(status && typeof status.icons === "number",
     "responde 'fieldHistoryStatus' com o estado do historico",
     JSON.stringify(status));
 
+// 1.9.0: o autor vem da sessao no servidor; o popup nao pergunta mais o nome do Zoho.
 const autor = await perguntar({ action: "getAuthor" });
-ok(autor && "author" in autor, "responde 'getAuthor' das quick replies", JSON.stringify(autor));
+ok(autor === undefined, "'getAuthor' saiu do despachante (autor vem do login)", JSON.stringify(autor));
 
 const nada = await perguntar({ action: "inexistente" });
 ok(nada === undefined, "mensagem desconhecida nao recebe resposta inventada", JSON.stringify(nada));
@@ -123,6 +124,10 @@ ok(nada === undefined, "mensagem desconhecida nao recebe resposta inventada", JS
 // ---- 3. o modulo esta exposto e e chamavel ----
 ok(sandbox.SQFieldHistory && typeof sandbox.SQFieldHistory.tick === "function",
     "SQFieldHistory.tick() existe para o observer unico chamar");
+
+ok(cs.js.indexOf("sessao.js") > cs.js.indexOf("config.js") && cs.js.indexOf("sessao.js") < cs.js.indexOf("content.js"),
+    "sessao.js carrega depois de config.js e antes de content.js", `ordem atual: ${cs.js.join(", ")}`);
+ok(sandbox.SQSessao && typeof sandbox.SQSessao.api === "function", "SQSessao.api() existe para o painel chamar a API");
 
 ok(sandbox.SQQuickReplies && typeof sandbox.SQQuickReplies.toggle === "function",
     "content.js expoe SQQuickReplies.toggle() para o painel de notas abrir os templates");

@@ -4,7 +4,8 @@
     "description": "Backend API for Study Quest Quick Replies Chrome Extension",
     "main": "server.js",
     "scripts": {
-        "start": "node server.js"
+        "start": "node server.js",
+        "test": "node --test test/*.test.mjs"
     },
     "dependencies": {
         "cors": "^2.8.5",

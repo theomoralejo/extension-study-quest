@@ -45,11 +45,12 @@ const SCENARIOS = [
   { name: 'janela baixa 500',   viewport: { width: 900,  height: 500 }, editor: { bottom: 40, right: 200 } }
 ];
 
+// `MOTORES=chromium` (lista por virgula) roda so os motores que a maquina tem.
 const ENGINES = [
-  { name: 'Gecko   (Firefox)', launcher: firefox },
-  { name: 'WebKit  (Safari) ', launcher: webkit },
-  { name: 'Chromium(Chrome/Edge)', launcher: chromium }
-];
+  { id: 'firefox', name: 'Gecko   (Firefox)', launcher: firefox },
+  { id: 'webkit', name: 'WebKit  (Safari) ', launcher: webkit },
+  { id: 'chromium', name: 'Chromium(Chrome/Edge)', launcher: chromium }
+].filter((e) => !process.env.MOTORES || process.env.MOTORES.split(',').includes(e.id));
 
 let failures = 0;
 const rows = [];

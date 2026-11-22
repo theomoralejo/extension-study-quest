@@ -4,38 +4,35 @@
 
     var SQ = globalThis.SQBrowser;
     var CFG = globalThis.SQConfig;
+    var SESSAO = globalThis.SQSessao;
 
     var editingId = null;
-    var editingAuthor = null; // editar nao troca quem criou a resposta
-    var currentAuthor = '';
-    var authorReady = null;   // nome do usuario logado no Zoho, pela aba ativa
     var submitting = false;
+    var entrando = false;
+    var tela = null;      // 'login' | 'app'
+    var tokenNaTela = null;
 
     document.addEventListener('DOMContentLoaded', function () {
-        loadReplies();
-
+        document.getElementById('loginForm').addEventListener('submit', handleLogin);
+        document.getElementById('btnLogout').addEventListener('click', handleLogout);
         document.getElementById('replyForm').addEventListener('submit', handleSubmit);
 
-        // Cache primeiro: o nome aparece mesmo se a aba ativa nao for o Zoho.
-        // O cache nunca sobrescreve o nome que a aba do Zoho ja respondeu.
-        SQ.storageGet(['zohoAuthor']).then(function (result) {
-            if (result && result.zohoAuthor && !currentAuthor) {
-                currentAuthor = result.zohoAuthor;
-            }
+        // Login ou logout em outro contexto (outra janela do popup, 401 no painel do Zoho).
+        // Sessao que some com a tela de login ja aberta nao apaga a mensagem que explica o 401.
+        SESSAO.onMudar(function (s) {
+            if (s) mostrarApp(s);
+            else if (tela !== 'login') mostrarLogin('');
         });
 
-        // Se a aba ativa for o Zoho, pergunta ao content script o nome atual.
-        authorReady = SQ.activeTab().then(function (tab) {
-            if (!tab || !tab.url || tab.url.indexOf('zoho') === -1) return;
-            return SQ.sendMessageToTab(tab.id, { action: 'getAuthor' }).then(function (response) {
-                if (response && response.author) {
-                    currentAuthor = response.author;
-                    SQ.storageSet({ zohoAuthor: currentAuthor });
-                }
-            });
+        // Ate a 1.8 o popup guardava o nome lido no Zoho para assinar respostas; o autor
+        // agora vem do login. Apaga o dado que nao serve mais.
+        SQ.storageRemove(['zohoAuthor']);
+
+        SESSAO.ler().then(function (s) {
+            if (s) mostrarApp(s);
+            else mostrarLogin('');
         });
 
-        showFieldHistoryStatus();
         setupFieldPicker();
         setupAutocomplete();
 
@@ -72,6 +69,100 @@
         });
     });
 
+    // ---------- sessao: login da Master Table ----------
+
+    /** Sem sessao: so o card de login aparece, com o foco no e-mail. */
+    function mostrarLogin(mensagem) {
+        var form = document.getElementById('loginForm');
+        if (tela !== 'login') {
+            tela = 'login';
+            tokenNaTela = null;
+            resetForm();
+            // dados da pessoa anterior nao ficam no DOM depois de sair
+            document.getElementById('repliesList').textContent = '';
+            document.getElementById('sessionName').textContent = '';
+            document.getElementById('app').classList.add('is-hidden');
+            form.classList.remove('is-hidden');
+            document.getElementById('loginPassword').value = '';
+            setEntrando(false);
+        }
+        setLoginError(mensagem || '');
+        var email = document.getElementById('loginEmail');
+        if (!email.value) email.focus();
+        else document.getElementById('loginPassword').focus();
+    }
+
+    /** Com sessao: o app inteiro, com quem esta conectado no topo. */
+    function mostrarApp(s) {
+        document.getElementById('sessionName').textContent = s.name || s.email || 'você';
+        document.getElementById('sessionName').title = s.email || '';
+        if (tela === 'app' && tokenNaTela === s.token) return; // o mesmo login chegando de novo pelo onChanged
+        tela = 'app';
+        tokenNaTela = s.token;
+        document.getElementById('loginForm').classList.add('is-hidden');
+        document.getElementById('app').classList.remove('is-hidden');
+        setLoginError('');
+        loadReplies();
+        showFieldHistoryStatus();
+    }
+
+    function setLoginError(texto) {
+        document.getElementById('loginError').textContent = texto;
+    }
+
+    function setEntrando(on) {
+        entrando = on;
+        var btn = document.getElementById('loginBtn');
+        btn.disabled = on;
+        btn.textContent = on ? 'Entrando…' : 'Entrar';
+        document.getElementById('loginForm').setAttribute('aria-busy', on ? 'true' : 'false');
+    }
+
+    function handleLogin(e) {
+        e.preventDefault();
+        if (entrando) return;
+        var emailEl = document.getElementById('loginEmail');
+        var senhaEl = document.getElementById('loginPassword');
+        var email = emailEl.value.trim();
+        if (!email || email.indexOf('@') < 1) {
+            setLoginError('Digite o e-mail que você usa na Master Table.');
+            emailEl.focus();
+            return;
+        }
+        if (!senhaEl.value) {
+            setLoginError('Digite a senha da Master Table.');
+            senhaEl.focus();
+            return;
+        }
+        setLoginError('');
+        setEntrando(true);
+        SESSAO.entrar(email, senhaEl.value).then(function (s) {
+            senhaEl.value = '';
+            setEntrando(false);
+            mostrarApp(s);
+        }, function (err) {
+            setEntrando(false);
+            setLoginError((err && err.message) || 'Não foi possível entrar. Tente de novo.');
+            if (err && err.codigo === 'senha') { senhaEl.value = ''; senhaEl.focus(); }
+        });
+    }
+
+    function handleLogout() {
+        var btn = document.getElementById('btnLogout');
+        btn.disabled = true;
+        SESSAO.sair().then(function () {
+            btn.disabled = false;
+            mostrarLogin('');
+        });
+    }
+
+    /** 401 em qualquer chamada: a sessao ja foi apagada em sessao.js, volta ao login dizendo por que. */
+    function tratarSemSessao(err) {
+        if (!err || !err.semSessao) return false;
+        mostrarLogin(err.message);
+        return true;
+    }
+
     /** true quando o usuario esta digitando uma categoria nova. */
     function isCreatingCategory() {
         return !document.getElementById('categoryInputWrap').classList.contains('is-hidden');
@@ -99,26 +190,15 @@
         }
 
         var isEditing = editingId !== null;
-        var url = isEditing ? CFG.url('/replies/' + editingId) : CFG.url('/replies');
-        var method = isEditing ? 'PUT' : 'POST';
+        var path = isEditing ? '/replies/' + editingId : '/replies';
         var id = isEditing ? editingId : Date.now().toString();
 
         setSubmitting(true, isEditing);
 
-        // Espera o nome do usuario logado: salvar antes dele chegar assinava com o nome em cache.
-        Promise.resolve(authorReady).catch(function () {}).then(function () {
-            var replyData = {
-                id: id,
-                title: title,
-                text: text,
-                category: category,
-                author: (isEditing && editingAuthor) || currentAuthor || 'Sistema'
-            };
-            return fetch(url, {
-                method: method,
-                headers: CFG.headers(true),
-                body: JSON.stringify(replyData)
-            });
+        // Sem `author`: o servidor assina com a pessoa da sessao (e mantem o autor original ao editar).
+        SESSAO.api(path, {
+            method: isEditing ? 'PUT' : 'POST',
+            body: { id: id, title: title, text: text, category: category }
         })
             .then(readJsonOrThrow)
             .then(function () {
@@ -127,6 +207,7 @@
                 loadReplies();
             })
             .catch(function (err) {
+                if (tratarSemSessao(err)) return;
                 console.error('Study Quest Replies: falha ao salvar', err);
                 showAlert(describeError(err, 'salvar a resposta'), 'error');
             })
@@ -148,7 +229,6 @@
 
     function resetForm() {
         editingId = null;
-        editingAuthor = null;
         document.getElementById('replyForm').reset();
         document.getElementById('categoryInputWrap').classList.add('is-hidden');
         document.getElementById('categorySelectWrap').classList.remove('is-hidden');
@@ -183,8 +263,9 @@
         var status = err && err.status;
         var detail = (err && err.message) || 'motivo desconhecido';
 
-        if (status === 401 || status === 403) {
-            return 'Sem autorização para ' + acao + ': a chave da API foi recusada pelo servidor. Avise o suporte.';
+        if (status === 403) {
+            return 'Sem autorização para ' + acao + ': o servidor recusou o seu acesso (' + detail +
+                '). Clique em Sair e entre de novo; se continuar, peça ao TI para conferir seu acesso à extensão na Master Table.';
         }
         if (status === 404) {
             return 'Não foi possível ' + acao + ': o registro não existe mais no servidor. Recarregue a lista.';
@@ -202,7 +283,7 @@
     }
 
     function loadReplies() {
-        fetch(CFG.url('/replies'), { headers: CFG.headers(false) })
+        SESSAO.api('/replies')
             .then(readJsonOrThrow)
             .then(function (replies) {
                 replies = replies || [];
@@ -230,6 +311,7 @@
                 renderReplies(replies);
             })
             .catch(function (err) {
+                if (tratarSemSessao(err)) return;
                 console.error('Study Quest Replies: erro ao carregar respostas', err);
                 showEmptyState(describeError(err, 'carregar as respostas'));
             });
@@ -667,7 +749,6 @@
      * so para reencontrar o mesmo registro que ja estava em memoria.
      */
     function editReply(reply) {
-        editingAuthor = reply.author || null;
         document.getElementById('replyTitle').value = reply.title || '';
         document.getElementById('replyText').value = reply.text || '';
 
@@ -708,10 +789,7 @@
             return;
         }
 
-        fetch(CFG.url('/replies/' + id), {
-            method: 'DELETE',
-            headers: CFG.headers(false)
-        })
+        SESSAO.api('/replies/' + id, { method: 'DELETE' })
             .then(function (res) {
                 if (!res.ok) {
                     var err = new Error('HTTP ' + res.status);
@@ -723,6 +801,7 @@
                 loadReplies();
             })
             .catch(function (err) {
+                if (tratarSemSessao(err)) return;
                 console.error('Study Quest Replies: falha ao excluir', err);
                 showAlert(describeError(err, 'excluir a resposta'), 'error');
             });
@@ -733,10 +812,7 @@
             return;
         }
 
-        fetch(CFG.url('/categories/' + encodeURIComponent(name)), {
-            method: 'DELETE',
-            headers: CFG.headers(false)
-        })
+        SESSAO.api('/categories/' + encodeURIComponent(name), { method: 'DELETE' })
             .then(function (res) {
                 if (!res.ok) {
                     var err = new Error('HTTP ' + res.status);
@@ -748,6 +824,7 @@
                 loadReplies();
             })
             .catch(function (err) {
+                if (tratarSemSessao(err)) return;
                 console.error('Study Quest Replies: falha ao excluir categoria', err);
                 showAlert(describeError(err, 'excluir a categoria'), 'error');
             });

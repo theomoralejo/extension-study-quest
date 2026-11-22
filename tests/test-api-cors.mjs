@@ -4,13 +4,15 @@
  *
  * Isto e diferente de checar com `curl`: o curl segue redirect e ignora CORS,
  * entao ele responde 200 numa URL em que a extensao morre. Como as chamadas
- * mandam o header `x-api-key`, o browser faz um preflight OPTIONS antes — e
+ * mandam o header `Authorization`, o browser faz um preflight OPTIONS antes — e
  * um redirect na resposta do preflight aborta tudo com "Failed to fetch".
  *
  * A pagina e servida em 127.0.0.1, logo o fetch e cross-origin de verdade e
  * dispara o mesmo preflight que dispara dentro do Zoho.
  *
- * Faz apenas LEITURA (GET) contra a API.
+ * Faz apenas LEITURA (GET) contra a API, com um Bearer invalido de proposito:
+ * passar = o browser chegou ao servidor (qualquer status HTTP, o esperado e 401).
+ * Sem credencial nenhuma: nao loga, nao le resposta de ninguem.
  */
 import { firefox, webkit, chromium } from 'playwright';
 import http from 'node:http';
@@ -22,7 +24,6 @@ const EXT_DIR = path.resolve(path.dirname(new URL(import.meta.url).pathname), '.
 // A base real usada pela extensao, lida do config (fonte unica).
 const cfgSrc = fs.readFileSync(path.join(EXT_DIR, 'config.js'), 'utf8');
 const API_BASE = /var API_BASE = '([^']+)'/.exec(cfgSrc)[1];
-const API_KEY = /var API_KEY = '([^']+)'/.exec(cfgSrc)[1];
 
 // A base antiga entra como CONTROLE NEGATIVO: ela precisa FALHAR, senao o
 // teste nao esta medindo o CORS de verdade.
@@ -55,17 +56,15 @@ for (const engine of ENGINES) {
   await page.goto(`http://127.0.0.1:${PORT}/`);
 
   for (const t of TARGETS) {
-    const result = await page.evaluate(async ({ base, key }) => {
+    const result = await page.evaluate(async ({ base }) => {
       try {
-        const res = await fetch(base + '/replies', { headers: { 'x-api-key': key } });
-        if (!res.ok) return { ok: false, why: 'HTTP ' + res.status };
-        const data = await res.json();
-        return { ok: true, count: Array.isArray(data) ? data.length : -1 };
+        const res = await fetch(base + '/replies', { headers: { Authorization: 'Bearer teste-cors-invalido' } });
+        return { ok: true, status: res.status };
       } catch (e) {
         // CORS barrado chega aqui como TypeError sem detalhe.
         return { ok: false, why: (e && e.message) || String(e) };
       }
-    }, { base: t.base, key: API_KEY });
+    }, { base: t.base });
 
     const behavedAsExpected = result.ok === t.mustPass;
     if (!behavedAsExpected) failures++;
@@ -73,8 +72,8 @@ for (const engine of ENGINES) {
     rows.push({
       engine: engine.name,
       alvo: t.label,
-      esperado: t.mustPass ? 'carregar' : 'falhar',
-      obtido: result.ok ? `carregou (${result.count} respostas)` : `falhou: ${result.why}`.slice(0, 44),
+      esperado: t.mustPass ? 'chegar' : 'falhar',
+      obtido: result.ok ? `chegou ao servidor (HTTP ${result.status})` : `falhou: ${result.why}`.slice(0, 44),
       veredito: behavedAsExpected ? 'OK' : 'INESPERADO'
     });
   }
