@@ -55,6 +55,19 @@
     };
     window.__sqReplies = FAKE_REPLIES;
 
+    // Sessao valida no storage da extensao: sem ela o painel mostra o convite a entrar.
+    window.chrome = {
+      runtime: { getURL: function (p) { return '/ext/' + p; }, onMessage: { addListener: function () { } } },
+      storage: {
+        local: {
+          get: function (k, cb) { cb({ sqSessao: { token: 'tk-teste', name: 'Teste', email: 't@x', expiresAt: '2999-01-01T00:00:00Z' } }); },
+          set: function (i, cb) { if (cb) cb(); },
+          remove: function (k, cb) { if (cb) cb(); }
+        },
+        onChanged: { addListener: function () { } }
+      }
+    };
+
     // `?forma=lyte`: o editor do Zoho desde nov/2026, montado pela estrutura lida na tela real
     // (lyte-note-editor, .lyteNoteFooterActions, input.cxNotesReactTitleInputElem).
     if (new URLSearchParams(location.search).get('forma') === 'lyte') {
@@ -87,6 +100,7 @@
 
   <script src="/ext/browser-api.js"></script>
   <script src="/ext/config.js"></script>
+  <script src="/ext/sessao.js"></script>
   <script src="/ext/content.js"></script>
 
   <script>

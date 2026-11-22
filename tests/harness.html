@@ -58,10 +58,24 @@
     };
 
     window.__sqReplies = FAKE_REPLIES;
+
+    // Sessao valida no storage da extensao: sem ela o painel mostra o convite a entrar.
+    window.chrome = {
+      runtime: { getURL: (p) => '/ext/' + p, onMessage: { addListener() { } } },
+      storage: {
+        local: {
+          get: (k, cb) => cb({ sqSessao: { token: 'tk-teste', name: 'Teste', email: 't@x', expiresAt: '2999-01-01T00:00:00Z' } }),
+          set: (i, cb) => cb && cb(),
+          remove: (k, cb) => cb && cb()
+        },
+        onChanged: { addListener() { } }
+      }
+    };
   </script>
 
   <script src="/ext/browser-api.js"></script>
   <script src="/ext/config.js"></script>
+  <script src="/ext/sessao.js"></script>
   <script src="/ext/content.js"></script>
 </body>
 
