@@ -9,7 +9,7 @@ DIR=/home/attriostudio/docker-data/volumes/attriostudio_html_data/_data/study-qu
 CARIMBO=$(date -u +%Y%m%dT%H%M%SZ)
 ARQS="app.js server.js package.json package-lock.json"
 
-node --test test/ >/dev/null || { echo "testes falharam: nada publicado"; exit 1; }
+node --test test/*.test.mjs >/dev/null || { echo "testes falharam: nada publicado"; exit 1; }
 tar czf - $ARQS | ssh -o BatchMode=yes attrio-ded "cat > /tmp/sq-api-$CARIMBO.tgz"
 ssh -o BatchMode=yes attrio-ded "sudo -n bash -s" <<EOF
 set -euo pipefail
