@@ -14,73 +14,102 @@
     Study Quest Extension
   </header>
   <div class="container">
-    <div id="alert" class="alert hidden" role="status" aria-live="polite"></div>
-
-    <form id="replyForm">
-      <h3 class="section-title">Nova Resposta</h3>
+    <!-- Sem sessao: so o login aparece. O resto nem existe na tela (Hick). -->
+    <form id="loginForm" class="login-card is-hidden" novalidate aria-labelledby="loginTitle">
+      <h2 id="loginTitle" class="login-title">Entrar</h2>
+      <p class="login-subtitle">Use o e-mail e a senha da Master Table</p>
 
       <div class="form-group">
-        <label for="replyTitle">Título</label>
-        <input type="text" id="replyTitle" name="replyTitle" autocomplete="off"
-          placeholder="Ex.: Saudação inicial" required>
+        <label for="loginEmail">E-mail</label>
+        <input type="email" id="loginEmail" name="email" autocomplete="username" inputmode="email"
+          spellcheck="false" autocapitalize="off" required>
       </div>
 
       <div class="form-group">
-        <label for="replyCategory">Categoria</label>
-        <div id="categorySelectWrap" class="input-row">
-          <select id="replyCategory" name="replyCategory" class="field">
-            <option value="" disabled selected>Selecione uma categoria...</option>
-          </select>
-          <button type="button" id="btnNewCategory" class="btn-icon" title="Criar nova categoria"
-            aria-label="Criar nova categoria">+</button>
-        </div>
-        <div id="categoryInputWrap" class="input-row is-hidden">
-          <input type="text" id="newCategoryInput" name="newCategoryInput" class="field" autocomplete="off"
-            placeholder="Ex.: Admissions">
-          <button type="button" id="btnCancelCategory" class="btn-icon btn-icon-danger" title="Cancelar"
-            aria-label="Cancelar nova categoria">✕</button>
-        </div>
+        <label for="loginPassword">Senha</label>
+        <input type="password" id="loginPassword" name="password" autocomplete="current-password" required>
       </div>
 
-      <div class="form-group">
-        <label for="replyText">Texto da Resposta</label>
-        <div class="suggest-wrap">
-          <textarea id="replyText" name="replyText" placeholder="Digite a resposta completa aqui..." required
-            rows="4" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="fieldSuggest"></textarea>
-          <ul id="fieldSuggest" class="field-suggest is-hidden" role="listbox" aria-label="Campos do registro"></ul>
-        </div>
-        <div class="field-tools">
-          <span class="field-hint">Digite <code>#</code> para puxar um campo do registro</span>
-          <button type="button" id="btnFields" class="btn-link" aria-expanded="false" aria-controls="fieldPicker">Inserir campo</button>
-        </div>
-        <div id="fieldPicker" class="field-picker is-hidden">
-          <div class="field-picker-search">
-            <input type="search" id="fieldSearch" class="field" autocomplete="off" placeholder="Buscar campo..." aria-label="Buscar campo">
-          </div>
-          <p id="fieldPickerStatus" class="field-picker-status" role="status"></p>
-          <ul id="fieldList" class="field-list"></ul>
-        </div>
-      </div>
+      <p id="loginError" class="login-error" role="alert"></p>
 
-      <button type="submit" id="submitBtn">Adicionar Resposta Rápida</button>
+      <button type="submit" id="loginBtn">Entrar</button>
     </form>
 
-    <div class="list-header">
-      <h3 class="section-title">Minhas Respostas</h3>
-      <button type="button" id="btnDeleteCategory" class="btn-danger-outline is-hidden"
-        title="Excluir categoria selecionada">Excluir categoria</button>
-    </div>
-    <p id="fillNote" class="fill-note is-hidden" role="status"></p>
-    <div id="repliesList"></div>
+    <div id="app" class="is-hidden">
+      <div class="session-bar">
+        <span class="session-who">Conectado como <strong id="sessionName"></strong></span>
+        <button type="button" id="btnLogout" class="btn-link">Sair</button>
+      </div>
 
-    <div id="fieldHistory" class="field-history is-hidden">
-      <h3 class="section-title">Histórico de campo</h3>
-      <p id="fieldHistoryStatus" class="field-history-status"></p>
+      <div id="alert" class="alert hidden" role="status" aria-live="polite"></div>
+
+      <form id="replyForm">
+        <h3 class="section-title">Nova Resposta</h3>
+
+        <div class="form-group">
+          <label for="replyTitle">Título</label>
+          <input type="text" id="replyTitle" name="replyTitle" autocomplete="off"
+            placeholder="Ex.: Saudação inicial" required>
+        </div>
+
+        <div class="form-group">
+          <label for="replyCategory">Categoria</label>
+          <div id="categorySelectWrap" class="input-row">
+            <select id="replyCategory" name="replyCategory" class="field">
+              <option value="" disabled selected>Selecione uma categoria...</option>
+            </select>
+            <button type="button" id="btnNewCategory" class="btn-icon" title="Criar nova categoria"
+              aria-label="Criar nova categoria">+</button>
+          </div>
+          <div id="categoryInputWrap" class="input-row is-hidden">
+            <input type="text" id="newCategoryInput" name="newCategoryInput" class="field" autocomplete="off"
+              placeholder="Ex.: Admissions">
+            <button type="button" id="btnCancelCategory" class="btn-icon btn-icon-danger" title="Cancelar"
+              aria-label="Cancelar nova categoria">✕</button>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="replyText">Texto da Resposta</label>
+          <div class="suggest-wrap">
+            <textarea id="replyText" name="replyText" placeholder="Digite a resposta completa aqui..." required
+              rows="4" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="fieldSuggest"></textarea>
+            <ul id="fieldSuggest" class="field-suggest is-hidden" role="listbox" aria-label="Campos do registro"></ul>
+          </div>
+          <div class="field-tools">
+            <span class="field-hint">Digite <code>#</code> para puxar um campo do registro</span>
+            <button type="button" id="btnFields" class="btn-link" aria-expanded="false" aria-controls="fieldPicker">Inserir campo</button>
+          </div>
+          <div id="fieldPicker" class="field-picker is-hidden">
+            <div class="field-picker-search">
+              <input type="search" id="fieldSearch" class="field" autocomplete="off" placeholder="Buscar campo..." aria-label="Buscar campo">
+            </div>
+            <p id="fieldPickerStatus" class="field-picker-status" role="status"></p>
+            <ul id="fieldList" class="field-list"></ul>
+          </div>
+        </div>
+
+        <button type="submit" id="submitBtn">Adicionar Resposta Rápida</button>
+      </form>
+
+      <div class="list-header">
+        <h3 class="section-title">Minhas Respostas</h3>
+        <button type="button" id="btnDeleteCategory" class="btn-danger-outline is-hidden"
+          title="Excluir categoria selecionada">Excluir categoria</button>
+      </div>
+      <p id="fillNote" class="fill-note is-hidden" role="status"></p>
+      <div id="repliesList"></div>
+
+      <div id="fieldHistory" class="field-history is-hidden">
+        <h3 class="section-title">Histórico de campo</h3>
+        <p id="fieldHistoryStatus" class="field-history-status"></p>
+      </div>
     </div>
   </div>
 
   <script src="browser-api.js"></script>
   <script src="config.js"></script>
+  <script src="sessao.js"></script>
   <script src="popup.js"></script>
 </body>
 

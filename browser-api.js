@@ -83,6 +83,36 @@
             return normalize(storage.set, storage, [items], undefined);
         },
 
+        /**
+         * Apaga chaves do storage local. Resolve sempre. Sem `remove` (fake de teste
+         * antigo), grava `null` na chave: quem le trata `null` como ausente.
+         */
+        storageRemove: function (keys) {
+            var storage = rt && rt.storage && rt.storage.local;
+            if (!storage) return Promise.resolve();
+            if (typeof storage.remove !== 'function') {
+                var nulls = {};
+                [].concat(keys).forEach(function (k) { nulls[k] = null; });
+                return normalize(storage.set, storage, [nulls], undefined);
+            }
+            return normalize(storage.remove, storage, [keys], undefined);
+        },
+
+        /**
+         * Avisa quando o storage muda (em qualquer contexto da extensao: popup, aba).
+         * `handler(changes, areaName)`; `changes[chave] = { oldValue, newValue }`.
+         * O evento tem a mesma forma em chrome.* e browser.*; sem a API, nao faz nada.
+         */
+        onStorageChange: function (handler) {
+            var ev = rt && rt.storage && rt.storage.onChanged;
+            if (!ev || typeof ev.addListener !== 'function') return;
+            try {
+                ev.addListener(function (changes, areaName) {
+                    try { handler(changes || {}, areaName); } catch (e) { /* listener nao derruba o resto */ }
+                });
+            } catch (e) { /* contexto invalidado */ }
+        },
+
         /** Resolve a aba ativa da janela atual, ou null. */
         activeTab: function () {
             var tabs = rt && rt.tabs;

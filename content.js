@@ -5,6 +5,8 @@
     var SQ = globalThis.SQBrowser;
     var CFG = globalThis.SQConfig;
 
+    var SEM_SESSAO_TEXTO = 'Entre na extensão para ver as respostas rápidas: clique no ícone da Study Quest na barra do navegador e use o login da Master Table.';
+
     var quickRepliesPanel = null;
     var currentEditor = null;
     var currentInsert = null; // destino do template: editor do Zoho ou painel de notas
@@ -152,37 +154,14 @@
         document.addEventListener('visibilitychange', onVisible);
 
         scheduleScan();
-        setTimeout(cacheZohoAuthorName, 2000);
+        // Login/logout no popup: o painel aberto troca na hora entre a lista e o convite a entrar.
+        if (globalThis.SQSessao) globalThis.SQSessao.onMudar(onSessaoMudou);
 
         // O painel e `position: fixed` ancorado no botao: se a janela muda de
         // tamanho ou a pagina rola, a ancora se move e o painel precisa
         // reacompanhar, senao ele "descola" e pode sair da tela.
         window.addEventListener('resize', scheduleReposition, { passive: true });
         window.addEventListener('scroll', scheduleReposition, { passive: true, capture: true });
-    }
-
-    // Usuario logado pela API (GET /users?type=CurrentUser). Raspar a tela pegava
-    // o nome de outra pessoa (autor de nota, dono do registro) e assinava a resposta errado.
-    var authorPromise = null;
-    function currentAuthor() {
-        if (!authorPromise) {
-            authorPromise = globalThis.SQZoho.get('/users?type=CurrentUser').then(function (b) {
-                var u = b.users && b.users[0];
-                var name = u && (u.full_name || [u.first_name, u.last_name].filter(Boolean).join(' '));
-                return name || getZohoAuthor();
-            }).catch(function () { authorPromise = null; return getZohoAuthor(); });
-        }
-        return authorPromise;
-    }
-
-    // Grava so quando muda: cada gravacao acorda os outros contextos da extensao.
-    function cacheZohoAuthorName() {
-        currentAuthor().then(function (author) {
-            if (!author || !SQ) return;
-            SQ.storageGet(['zohoAuthor']).then(function (r) {
-                if (!r || r.zohoAuthor !== author) SQ.storageSet({ zohoAuthor: author });
-            });
-        });
     }
 
     function checkForNoteEditor(roots) {
@@ -430,89 +409,55 @@
         }
     }
 
-    // Tentar localizar um nome no cache da extensao primeiro
-    // Se nao, procura ativamente por elementos no DOM
-    function getZohoAuthor() {
-        try {
-            var selectors = [
-                '#show-user-name',
-                '#userName',
-                '.user-name',
-                '[data-zcqa="user_profile_name"]',
-                '.profile-name',
-                '#top-band-profile-name',
-                'a.profile_username span',
-                '#profile_name',
-                '#topBand_user_name',
-                '.cp-setup-user-name',
-                '.usr-name',
-                '.user-profile-name',
-                '#zcdropdown1_text' // Selector específico às vezes usado no Header
-            ];
-
-            for (var i = 0; i < selectors.length; i++) {
-                var elem = document.querySelector(selectors[i]);
-                if (elem && elem.textContent && elem.textContent.trim().length > 0) {
-                    return elem.textContent.trim();
-                }
-            }
-
-            // As vezes está dentro do texto alternativo ou título das fotos (não a genérica)
-            var userImg = document.querySelector('#crm-setup-userpic, #topBand_user_icon_img, .profile-pic img, img[alt*="Profile"]');
-            if (userImg) {
-                var alt = userImg.getAttribute('alt');
-                if (alt && alt.trim().length > 0 && alt.toLowerCase().indexOf('profile') === -1) {
-                    return alt.trim();
-                }
-                var title = userImg.getAttribute('title');
-                if (title && title.trim().length > 0 && title.toLowerCase().indexOf('profile') === -1) {
-                    return title.trim();
-                }
-            }
-
-            // Opcional limitador do class pattern (pesado). Reduzido para testar só primeiros 10 pra n travar.
-            var wildcardElems = document.querySelectorAll('span[class*="profile"], div[class*="profile"]');
-            var maxChecks = Math.min(wildcardElems.length, 10);
-            for (var j = 0; j < maxChecks; j++) {
-                var el = wildcardElems[j];
-                if (el && el.textContent) {
-                    var txt = el.textContent.trim();
-                    if (txt.length > 2 && txt.length < 30 && txt.toLowerCase().indexOf('profile') === -1 && txt.toLowerCase().indexOf('setting') === -1) {
-                        return txt;
-                    }
-                }
-            }
-
-            return '';
-        } catch (e) {
-            console.error('Study Quest Replies: erro ao ler o autor', e);
-            return '';
-        }
-    }
-
     function loadQuickReplies(searchTerm, categoryFilter) {
         searchTerm = searchTerm || '';
         categoryFilter = categoryFilter || '';
 
-        fetch(CFG.url('/replies'), { headers: CFG.headers(false) })
+        globalThis.SQSessao.api('/replies')
             .then(function (res) {
                 if (!res.ok) throw new Error('HTTP ' + res.status);
                 return res.json();
             })
             .then(function (replies) {
+                setSemSessao(false);
                 displayQuickReplies(replies || [], searchTerm, categoryFilter);
             })
             .catch(function (err) {
+                if (err && err.semSessao) { showLoginHint(); return; }
                 console.error('Study Quest Replies: erro ao buscar respostas', err);
                 showListError(describeFetchError(err));
             });
     }
 
+    /** Sessao entrou ou saiu (popup, outra aba): recarrega a lista do painel aberto. */
+    function onSessaoMudou() {
+        if (retired || !SQ.alive() || !quickRepliesPanel) return;
+        handleSearch();
+    }
+
+    function setSemSessao(on) {
+        if (quickRepliesPanel) quickRepliesPanel.classList.toggle('quick-replies-sem-sessao', on);
+    }
+
+    /** Sem sessao nao e erro: e o convite para entrar, com o caminho exato. */
+    function showLoginHint() {
+        var listContainer = document.getElementById('quickRepliesList');
+        if (!listContainer) return;
+        setSemSessao(true);
+        listContainer.textContent = '';
+        var div = document.createElement('div');
+        div.className = 'quick-replies-login-hint';
+        div.setAttribute('role', 'status');
+        div.textContent = SEM_SESSAO_TEXTO;
+        listContainer.appendChild(div);
+        repositionNow();
+    }
+
     /** Traduz a falha em causa + acao, em vez de um "erro" generico. */
     function describeFetchError(err) {
         var msg = (err && err.message) || '';
-        if (msg.indexOf('HTTP 401') === 0 || msg.indexOf('HTTP 403') === 0) {
-            return 'Sem autorização para ler as respostas (a chave da API foi recusada). Avise o suporte.';
+        if (msg.indexOf('HTTP 403') === 0) {
+            return 'Sem autorização para ler as respostas: o servidor recusou o seu acesso. Peça ao TI para conferir seu acesso à extensão na Master Table.';
         }
         if (msg.indexOf('HTTP 5') === 0) {
             return 'O servidor de respostas falhou (' + msg + '). Tente de novo em alguns minutos.';
@@ -1197,9 +1142,6 @@
     // nova que precisa falar com o popup entra como mais um `if` aqui.
     SQ.onMessage(function (request) {
         if (!request) return undefined;
-        if (request.action === 'getAuthor') {
-            return currentAuthor().then(function (a) { return { author: a }; });
-        }
         if (request.action === 'fillText') {
             if (!globalThis.SQPlaceholders) return null;
             return globalThis.SQPlaceholders.fillAll(request.texts);

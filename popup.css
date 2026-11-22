@@ -5,6 +5,9 @@
   --sq-accent: #F28D19;
   /* Laranja de destaque */
   --sq-accent-dark: #E95320;
+  /* Botao primario: laranja chapado com contraste AA para texto branco (5,2:1). */
+  --sq-accent-strong: #C2410C;
+  --sq-accent-strong-hover: #A8380A;
   --sq-bg: #f5f6fa;
   --sq-surface: #ffffff;
   --sq-text-main: #333333;
@@ -45,7 +48,7 @@ body {
 }
 
 header {
-  background: linear-gradient(135deg, var(--sq-primary) 0%, var(--sq-primary-dark) 100%);
+  background: var(--sq-primary);
   color: white;
   padding: 16px 20px;
   font-size: 16px;
@@ -112,6 +115,8 @@ label {
 }
 
 input[type="text"],
+input[type="email"],
+input[type="password"],
 textarea,
 select,
 .field {
@@ -129,6 +134,8 @@ select,
 }
 
 input[type="text"]:focus,
+input[type="email"]:focus,
+input[type="password"]:focus,
 textarea:focus,
 select:focus,
 .field:focus {
@@ -196,7 +203,7 @@ textarea {
 button[type="submit"] {
   width: 100%;
   padding: 12px;
-  background: linear-gradient(135deg, var(--sq-accent) 0%, var(--sq-accent-dark) 100%);
+  background: var(--sq-accent-strong);
   color: white;
   border: none;
   border-radius: var(--radius-sm);
@@ -204,19 +211,19 @@ button[type="submit"] {
   font-weight: 600;
   font-family: inherit;
   cursor: pointer;
-  transition: transform .1s, opacity .2s, box-shadow .2s;
-  box-shadow: 0 4px 6px rgba(242, 141, 25, 0.2);
+  transition: transform .1s, background .2s, box-shadow .2s;
+  box-shadow: 0 4px 6px rgba(194, 65, 12, 0.2);
 }
 
 button[type="submit"]:hover {
-  opacity: .95;
+  background: var(--sq-accent-strong-hover);
   transform: translateY(-1px);
-  box-shadow: 0 6px 8px rgba(242, 141, 25, 0.3);
+  box-shadow: 0 6px 8px rgba(194, 65, 12, 0.3);
 }
 
 button[type="submit"]:active {
   transform: translateY(1px);
-  box-shadow: 0 2px 4px rgba(242, 141, 25, 0.2);
+  box-shadow: 0 2px 4px rgba(194, 65, 12, 0.2);
 }
 
 button[type="submit"][disabled] {
@@ -459,3 +466,66 @@ button[type="submit"][disabled] {
 .suggest-item:hover, .suggest-item.is-active { background: #f0f6fb; }
 .suggest-item.is-active code { color: var(--sq-primary-dark); }
 .suggest-empty { padding: 8px 10px; font-size: 12px; color: var(--sq-text-muted); }
+
+/* ---------- Sessao: login da Master Table ---------- */
+/* Sem sessao so o card de login existe; com sessao, so o app. */
+#app.is-hidden,
+.login-card.is-hidden {
+  display: none;
+}
+
+.login-card {
+  margin-bottom: 0;
+}
+
+.login-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--sq-primary-dark);
+  margin-bottom: 4px;
+}
+
+.login-subtitle {
+  font-size: 13px;
+  color: var(--sq-text-muted);
+  margin-bottom: 16px;
+}
+
+/* Erro do login: sempre no DOM (role=alert anuncia ao trocar o texto), some vazio. */
+.login-error {
+  margin: 0 0 14px;
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  line-height: 1.45;
+  background: var(--sq-error-bg);
+  color: #721c24;
+  border-left: 4px solid var(--sq-error);
+  overflow-wrap: anywhere;
+  white-space: pre-line;
+}
+
+.login-error:empty {
+  display: none;
+}
+
+.session-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 12px;
+  margin-bottom: 14px;
+  font-size: 12px;
+  color: var(--sq-text-muted);
+}
+
+.session-who {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.session-who strong {
+  color: var(--sq-text-main);
+  font-weight: 600;
+}
