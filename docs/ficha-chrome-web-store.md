@@ -1,6 +1,6 @@
 # Ficha da Study Quest Extension na Chrome Web Store
 
-**Preparada em 22/nov/2026 para a versão 1.9.0. Nada submetido.** Quem envia: o Theo, com a conta de
+**Preparada em 22/nov/2026 para a versão 1.9.0.** Primeiro envio: só pelo painel, num navegador normal (o Google recusa login de navegador automatizado: "This browser or app may not be secure", testado em 22/nov/2026); as versões seguintes podem ir pela API. Quem envia: o Theo, com a conta de
 desenvolvedor da Attrio (editor **Attrio Studio**). Permissões: [justificativa](justificativa-permissoes-chrome-web-store.md).
 Privacidade: [texto da política](spec-politica-privacidade-extensao.md), publicada em https://attriostudio.com/privacidade-extensao-study-quest/ (página 3068 do WordPress da Attrio, 22/nov/2026).
 
@@ -66,7 +66,9 @@ Privacidade: [texto da política](spec-politica-privacidade-extensao.md), public
 
 Propósito único, justificativa de cada permissão e tipos de dados: [justificativa-permissoes-chrome-web-store.md](justificativa-permissoes-chrome-web-store.md).
 
-## Capturas de tela (a produzir, 1280 × 800 px)
+## Capturas de tela (1280 × 800 px)
+
+**Prontas:** `captura-1-entrar.png`, `captura-2-respostas.png` e `tile-pequeno-440x280.png` em [`docs/assets/loja-2026-11-22/`](assets/loja-2026-11-22/), com dados fictícios. As linhas 3 a 5 da tabela abaixo dependem de um Zoho de teste e ficam para depois.
 
 Com dados **fictícios** (Deal, pessoas e telefones inventados), no Chromium, popup e Zoho de teste. Nenhum dado real de aluno.
 
@@ -101,11 +103,11 @@ Texto para colar (inglês):
 
 | Requisito | Estado |
 |---|---|
-| Servidor com `/api/auth/session` e Bearer em produção | 🔴 Pendente (trabalho paralelo na API; a 1.9.0 não funciona sem ele) |
-| Feature flag `study_quest_extension` na Master Table | 🔴 Pendente (lado Master Table) |
-| Conta de revisão na Master Table | 🔴 A criar pelo TI; senha no Cofre |
+| Servidor com `/api/auth/session` e Bearer em produção | ✅ No ar desde 22/nov/2026 (login real provado) |
+| Feature flag `study_quest_extension` na Master Table | ✅ No ar (master-table #305) |
+| Conta de revisão na Master Table | 🔴 Decisão do Theo pendente (conta própria, papel "User", desativada depois) |
 | Política publicada numa URL pública | ✅ https://attriostudio.com/privacidade-extensao-study-quest/ |
-| Capturas 1280 × 800 | A produzir com dados fictícios |
-| Pacote | `./scripts/build.sh` → `dist/study-quest-extension-chrome-1.9.0.zip` |
+| Capturas 1280 × 800 e tile 440 × 280 | ✅ [`docs/assets/loja-2026-11-22/`](assets/loja-2026-11-22/), dados fictícios |
+| Pacote | ✅ [release v1.9.0](https://github.com/theomoralejo/extension-study-quest/releases/download/v1.9.0/study-quest-extension-chrome-1.9.0.zip) · SHA-256 `d212bf1ddba94bb2387ce97850064bd2aff1ecebc674fb2fd5398557632778ac` |
 
 Documentação oficial: [publicar](https://developer.chrome.com/docs/webstore/publish) · [ficha](https://developer.chrome.com/docs/webstore/cws-dashboard-listing) · [privacidade](https://developer.chrome.com/docs/webstore/cws-dashboard-privacy) · [distribuição](https://developer.chrome.com/docs/webstore/cws-dashboard-distribution).
