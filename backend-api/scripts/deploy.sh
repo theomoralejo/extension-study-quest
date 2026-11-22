@@ -13,7 +13,7 @@ node --test test/*.test.mjs >/dev/null || { echo "testes falharam: nada publicad
 tar czf - $ARQS | ssh -o BatchMode=yes attrio-ded "cat > /tmp/sq-api-$CARIMBO.tgz"
 ssh -o BatchMode=yes attrio-ded "sudo -n bash -s" <<EOF
 set -euo pipefail
-B=$DIR/_backup-$CARIMBO; mkdir -p \$B
+B=/home/attriostudio/backups/study-quest-api/$CARIMBO; mkdir -p -m 700 \$B
 for f in $ARQS; do if [ -f $DIR/\$f ]; then cp -p $DIR/\$f \$B/; fi; done
 tar xzf /tmp/sq-api-$CARIMBO.tgz -C $DIR && rm /tmp/sq-api-$CARIMBO.tgz
 chown attriostudio:attriostudio $DIR/{app.js,server.js,package.json,package-lock.json}

@@ -7,7 +7,8 @@ const require = createRequire(import.meta.url);
 const { createApp, hashDoToken, DURACAO_SESSAO_MS } = require('../app.js');
 
 const CHAVE = 'chave-antiga-de-teste-123';
-const PB_OK = 'pb-token-valido-'.padEnd(40, 'x');
+const PB_OK = 'eyJhbGciOiJIUzI1NiJ9.eyJpZCI6InUxIn0.assinatura-valida_x';
+const FUTURO = new Date('2099-01-01T00:00:00Z');
 
 // Banco falso: só as consultas que o app faz. Consulta desconhecida = falha alta.
 function bancoFalso() {
@@ -26,6 +27,10 @@ function bancoFalso() {
         return [{}];
       }
       if (sql.startsWith('DELETE FROM extension_sessions WHERE token_hash')) { sessoes.delete(p[0]); return [{}]; }
+      if (sql.startsWith('SELECT token_hash FROM extension_sessions WHERE user_id')) {
+        return [[...sessoes].filter(([, s]) => s.user_id === p[0])
+          .sort((a, b) => b[1].expires_at - a[1].expires_at).map(([k]) => ({ token_hash: k }))];
+      }
       if (sql.startsWith('INSERT INTO extension_sessions')) {
         sessoes.set(p[0], { user_id: p[1], user_name: p[2], user_email: p[3], expires_at: p[4] });
         return [{}];
@@ -63,7 +68,7 @@ function bancoFalso() {
   return pool;
 }
 
-async function subir({ aceitarChaveAntiga = false, masterTable, relogio } = {}) {
+async function subir({ chaveAntigaAte = null, masterTable, relogio } = {}) {
   const pool = bancoFalso();
   const chamadasMT = [];
   const conferir = masterTable || (async (t) => {
@@ -71,7 +76,7 @@ async function subir({ aceitarChaveAntiga = false, masterTable, relogio } = {}) 
     if (t === PB_OK) return { status: 200, corpo: { id: 'u1', name: 'Carina Teste', email: 'carina@x.com' } };
     return { status: 401, corpo: { error: 'expired' } };
   });
-  const app = createApp({ pool, apiKey: CHAVE, aceitarChaveAntiga, conferirNaMasterTable: conferir, agora: relogio });
+  const app = createApp({ pool, apiKey: CHAVE, chaveAntigaAte, conferirNaMasterTable: conferir, agora: relogio });
   const server = await new Promise((ok) => { const s = app.listen(0, '127.0.0.1', () => ok(s)); });
   const base = `http://127.0.0.1:${server.address().port}`;
   const chamar = async (metodo, rota, { corpo, headers = {} } = {}) => {
@@ -105,14 +110,66 @@ test('sem login: respostas e categorias recusam com 401 code=sessao', async () =
   } finally { await api.fechar(); }
 });
 
-test('chave antiga: recusada por padrão, aceita só com ACEITAR_CHAVE_ANTIGA', async () => {
+test('chave antiga: recusada sem data; com data, só GET e só até a data', async () => {
+  let agora = new Date('2026-11-22T12:00:00Z');
   const fechado = await subir();
-  const aberto = await subir({ aceitarChaveAntiga: true });
+  const aberto = await subir({ chaveAntigaAte: new Date('2026-12-01T00:00:00Z'), relogio: () => agora });
+  const k = { 'x-api-key': CHAVE };
   try {
-    assert.equal((await fechado.chamar('GET', '/api/replies', { headers: { 'x-api-key': CHAVE } })).status, 401);
-    assert.equal((await aberto.chamar('GET', '/api/replies', { headers: { 'x-api-key': CHAVE } })).status, 200);
+    assert.equal((await fechado.chamar('GET', '/api/replies', { headers: k })).status, 401);
+    assert.equal((await aberto.chamar('GET', '/api/replies', { headers: k })).status, 200);
     assert.equal((await aberto.chamar('GET', '/api/replies', { headers: { 'x-api-key': CHAVE + 'x' } })).status, 401);
+    for (const [m, rota] of [['POST', '/api/replies'], ['PUT', '/api/replies/1'], ['DELETE', '/api/replies/1'], ['DELETE', '/api/categories/Geral']]) {
+      const r = await aberto.chamar(m, rota, { headers: k, corpo: m === 'DELETE' ? undefined : { title: 't', text: 'x' } });
+      assert.equal(r.status, 401, `chave antiga não grava: ${m} ${rota}`);
+    }
+    agora = new Date('2026-12-01T00:00:01Z');
+    assert.equal((await aberto.chamar('GET', '/api/replies', { headers: k })).status, 401, 'depois da data');
   } finally { await fechado.fechar(); await aberto.fechar(); }
+});
+
+test('login: limite por IP (429) e teto de chamadas simultâneas à Master Table (503)', { timeout: 10000 }, async () => {
+  const api = await subir();
+  try {
+    for (let i = 0; i < 10; i++) assert.equal((await api.chamar('POST', '/api/auth/session', { corpo: { pbToken: PB_OK } })).status, 201);
+    assert.equal((await api.chamar('POST', '/api/auth/session', { corpo: { pbToken: PB_OK } })).status, 429);
+  } finally { await api.fechar(); }
+
+  const soltar = [];
+  const presa = await subir({ masterTable: () => new Promise((ok) => soltar.push(() => ok({ status: 401, corpo: {} }))) });
+  try {
+    const pendentes = [];
+    for (let i = 0; i < 10; i++) {
+      pendentes.push(presa.chamar('POST', '/api/auth/session', {
+        corpo: { pbToken: PB_OK }, headers: { 'X-Forwarded-For': `10.0.0.${i}` } }));
+    }
+    while (soltar.length < 10) await new Promise((r) => setTimeout(r, 5));
+    const extra = await presa.chamar('POST', '/api/auth/session', { corpo: { pbToken: PB_OK }, headers: { 'X-Forwarded-For': '10.0.1.1' } });
+    assert.equal(extra.status, 503);
+    soltar.forEach((f) => f());
+    assert.deepEqual((await Promise.all(pendentes)).map((r) => r.status), Array(10).fill(401));
+    assert.equal(presa.chamadasMT.length, 0);
+  } finally { await presa.fechar(); }
+});
+
+test('no máximo 5 sessões por pessoa', async () => {
+  let agora = new Date('2026-11-22T12:00:00Z');
+  const api = await subir({ relogio: () => agora });
+  try {
+    const tokens = [];
+    for (let i = 0; i < 7; i++) { agora = new Date(agora.getTime() + 61000); tokens.push(await entrar(api)); }
+    assert.equal(api.pool.sessoes.size, 5);
+    assert.equal((await api.chamar('GET', '/api/replies', { headers: { Authorization: `Bearer ${tokens[0]}` } })).status, 401);
+    assert.equal((await api.chamar('GET', '/api/replies', { headers: { Authorization: `Bearer ${tokens[6]}` } })).status, 200);
+  } finally { await api.fechar(); }
+});
+
+test('rota desconhecida em /api nasce fechada', async () => {
+  const api = await subir();
+  try {
+    assert.equal((await api.chamar('GET', '/api/qualquer-coisa')).status, 401);
+    assert.equal((await api.chamar('POST', '/api/admin/limpar')).status, 401);
+  } finally { await api.fechar(); }
 });
 
 test('login: troca o token PB por sessão própria; banco guarda só o hash', async () => {
@@ -157,7 +214,7 @@ test('login: Master Table 401/403/erro/resposta estranha viram 401/403/503/502',
 test('login sem pbToken válido: 400 sem chamar a Master Table', async () => {
   const api = await subir();
   try {
-    for (const corpo of [{}, { pbToken: 'curto' }, { pbToken: 123 }]) {
+    for (const corpo of [{}, { pbToken: 'curto' }, { pbToken: 123 }, { pbToken: 'a'.repeat(40) }, { pbToken: 'a.b' }]) {
       assert.equal((await api.chamar('POST', '/api/auth/session', { corpo })).status, 400);
     }
     assert.equal(api.chamadasMT.length, 0);
@@ -203,7 +260,7 @@ test('sair apaga a sessão; token apagado ou vencido volta a dar 401', async () 
 });
 
 test('Bearer malformado ou desconhecido não abre nada', async () => {
-  const api = await subir({ aceitarChaveAntiga: true });
+  const api = await subir({ chaveAntigaAte: FUTURO });
   try {
     for (const auth of ['Bearer ', 'Bearer abc', `Bearer ${'a'.repeat(43)}`, `Basic ${'a'.repeat(43)}`]) {
       assert.equal((await api.chamar('GET', '/api/replies', { headers: { Authorization: auth } })).status, 401, auth);

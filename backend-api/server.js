@@ -53,15 +53,20 @@ const DB = {
 const PORT = Number(process.env.PORT || 3050);
 const MASTER_TABLE_URL = process.env.MASTER_TABLE_URL || 'https://api.master.studyquestuk.com';
 
-// Transição: a chave fixa (pública no GitHub) só vale enquanto ACEITAR_CHAVE_ANTIGA=1.
-const aceitarChaveAntiga = process.env.ACEITAR_CHAVE_ANTIGA === '1';
-const apiKey = aceitarChaveAntiga ? obrigatorio('API_KEY') : null;
+// Transição: a chave fixa (pública no GitHub) só lê, e só até ACEITAR_CHAVE_ANTIGA_ATE (AAAA-MM-DD, UTC).
+const ate = process.env.ACEITAR_CHAVE_ANTIGA_ATE;
+const chaveAntigaAte = ate ? new Date(`${ate}T00:00:00Z`) : null;
+if (chaveAntigaAte && Number.isNaN(chaveAntigaAte.getTime())) {
+  console.error(`[boot] ACEITAR_CHAVE_ANTIGA_ATE inválida (${ate}); use AAAA-MM-DD.`);
+  process.exit(1);
+}
+const apiKey = chaveAntigaAte ? obrigatorio('API_KEY') : null;
 
 const pool = mysql.createPool(DB);
 const app = createApp({
   pool,
   apiKey,
-  aceitarChaveAntiga,
+  chaveAntigaAte,
   conferirNaMasterTable: conferenteDaMasterTable(MASTER_TABLE_URL),
 });
 
@@ -74,6 +79,6 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(
     `${new Date().toISOString()} [boot] study-quest-api na porta ${PORT} · ` +
     `banco ${DB.user}@${DB.host}:${DB.port}/${DB.database} · pool ${DB.connectionLimit} · ` +
-    `master table ${MASTER_TABLE_URL} · chave antiga ${aceitarChaveAntiga ? 'ACEITA (transição)' : 'recusada'}`
+    `master table ${MASTER_TABLE_URL} · chave antiga ${chaveAntigaAte ? `só leitura até ${ate}` : 'recusada'}`
   );
 });

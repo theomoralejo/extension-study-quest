@@ -4,8 +4,13 @@ const crypto = require('crypto');
 
 // Sessão da extensão: token próprio, só para as respostas rápidas. O token da
 // Master Table (acesso total a ela) nunca fica guardado aqui nem na extensão.
-const DURACAO_SESSAO_MS = 30 * 24 * 60 * 60 * 1000;
+const DURACAO_SESSAO_MS = 14 * 24 * 60 * 60 * 1000;
 const PRAZO_MASTER_TABLE_MS = 5000;
+const SESSOES_POR_PESSOA = 5;
+// Login é público e cada pedido vira uma chamada à Master Table: limite por IP e teto de chamadas simultâneas.
+const LOGINS_POR_IP_POR_MINUTO = 10;
+const CHAMADAS_SIMULTANEAS_MT = 10;
+const FORMATO_JWT = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/;
 
 const SQL_TABELA_SESSOES = `CREATE TABLE IF NOT EXISTS extension_sessions (
   token_hash CHAR(64) NOT NULL PRIMARY KEY,
@@ -33,9 +38,11 @@ function conferenteDaMasterTable(baseUrl, fetchImpl = fetch) {
   };
 }
 
-function createApp({ pool, apiKey, aceitarChaveAntiga, conferirNaMasterTable, agora = () => new Date() }) {
+function createApp({ pool, apiKey, chaveAntigaAte = null, conferirNaMasterTable, agora = () => new Date() }) {
   const app = express();
   app.disable('x-powered-by');
+  // Atrás do Caddy: o IP real vem no X-Forwarded-For que ele grava.
+  app.set('trust proxy', 1);
   app.use(express.json({ limit: '256kb' }));
   // Sem cookie: a credencial é o header Authorization, então origem aberta não dá acesso a ninguém.
   app.use(cors());
@@ -47,7 +54,8 @@ function createApp({ pool, apiKey, aceitarChaveAntiga, conferirNaMasterTable, ag
     req.rota = req.originalUrl.split('?')[0];
     res.on('finish', () => {
       const ms = Number(process.hrtime.bigint() - t0) / 1e6;
-      console.log(`${new Date().toISOString()} ${req.id} ${req.method} ${req.rota} ${res.statusCode} ${ms.toFixed(1)}ms`);
+      const quem = req.usuario ? ` u=${req.usuario.id}` : (req.chaveAntiga ? ' CHAVE_ANTIGA' : '');
+      console.log(`${new Date().toISOString()} ${req.id} ${req.method} ${req.rota} ${res.statusCode} ${ms.toFixed(1)}ms${quem}`);
     });
     next();
   });
@@ -96,12 +104,30 @@ function createApp({ pool, apiKey, aceitarChaveAntiga, conferirNaMasterTable, ag
   // ─── Sessão ──────────────────────────────────────────────────────────────
   app.use('/api/auth', (req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
 
+  const tentativasPorIp = new Map();
+  let chamadasMtNoAr = 0;
+  function estourouLimite(ip) {
+    const agoraMs = agora().getTime();
+    if (tentativasPorIp.size > 10000) tentativasPorIp.clear();
+    const t = tentativasPorIp.get(ip);
+    if (!t || agoraMs - t.inicio >= 60000) { tentativasPorIp.set(ip, { inicio: agoraMs, n: 1 }); return false; }
+    t.n += 1;
+    return t.n > LOGINS_POR_IP_POR_MINUTO;
+  }
+
   app.post('/api/auth/session', async (req, res) => {
     const pbToken = req.body && req.body.pbToken;
-    if (typeof pbToken !== 'string' || pbToken.length < 20 || pbToken.length > 4096) {
+    if (typeof pbToken !== 'string' || pbToken.length > 4096 || !FORMATO_JWT.test(pbToken)) {
       return res.status(400).json({ error: 'Pedido sem o login da Master Table. Entre de novo pela extensão.' });
     }
+    if (estourouLimite(req.ip)) {
+      return res.status(429).json({ error: 'Muitas tentativas de entrar em pouco tempo. Espere um minuto e tente de novo.' });
+    }
+    if (chamadasMtNoAr >= CHAMADAS_SIMULTANEAS_MT) {
+      return res.status(503).json({ error: 'Muitos logins ao mesmo tempo. Tente de novo em alguns segundos.' });
+    }
     let resposta;
+    chamadasMtNoAr += 1;
     try {
       resposta = await conferirNaMasterTable(pbToken);
     } catch (e) {
@@ -110,6 +136,8 @@ function createApp({ pool, apiKey, aceitarChaveAntiga, conferirNaMasterTable, ag
         error: `A Master Table não respondeu a tempo. Tente de novo em instantes; se continuar, avise o suporte (referência ${req.id}).`,
         ref: req.id,
       });
+    } finally {
+      chamadasMtNoAr -= 1;
     }
     const { status, corpo } = resposta;
     if (status === 401) {
@@ -139,6 +167,14 @@ function createApp({ pool, apiKey, aceitarChaveAntiga, conferirNaMasterTable, ag
         'INSERT INTO extension_sessions (token_hash, user_id, user_name, user_email, expires_at) VALUES (?, ?, ?, ?, ?)',
         [hashDoToken(token), corpo.id, nome.slice(0, 255), corpo.email.slice(0, 255), expira]
       );
+      // Mantém só as sessões mais novas de cada pessoa.
+      const [antigas] = await pool.execute(
+        'SELECT token_hash FROM extension_sessions WHERE user_id = ? ORDER BY expires_at DESC',
+        [corpo.id]
+      );
+      for (const r of antigas.slice(SESSOES_POR_PESSOA)) {
+        await pool.execute('DELETE FROM extension_sessions WHERE token_hash = ?', [r.token_hash]);
+      }
     } catch (e) { return falhou(req, res, 'abrir a sessão da extensão', e); }
     console.log(`${new Date().toISOString()} ${req.id} SESSAO aberta para ${corpo.id}`);
     res.status(201).json({ token, name: nome, email: corpo.email, expiresAt: expira.toISOString() });
@@ -164,8 +200,9 @@ function createApp({ pool, apiKey, aceitarChaveAntiga, conferirNaMasterTable, ag
   });
 
   // ─── Autorização das respostas ───────────────────────────────────────────
-  app.use(['/api/replies', '/api/categories'], async (req, res, next) => {
-    if (req.method === 'OPTIONS') return next();
+  // Nega tudo em /api por padrão; só login e sonda de saúde ficam de fora.
+  app.use('/api', async (req, res, next) => {
+    if (req.method === 'OPTIONS' || req.path.startsWith('/auth/') || req.path === '/auth' || req.path === '/health') return next();
     const token = tokenDoHeader(req);
     if (token) {
       try {
@@ -175,10 +212,12 @@ function createApp({ pool, apiKey, aceitarChaveAntiga, conferirNaMasterTable, ag
         return next();
       } catch (e) { return falhou(req, res, 'conferir a sessão da extensão', e); }
     }
-    // Transição: versões antigas da extensão ainda mandam a chave fixa (pública no GitHub).
-    if (aceitarChaveAntiga && chaveConfere(req.headers['x-api-key'])) {
-      console.warn(`${new Date().toISOString()} ${req.id} CHAVE ANTIGA usada em ${req.method} ${req.rota}`);
+    // Transição: versões antigas da extensão mandam a chave fixa, que é PÚBLICA no GitHub.
+    // Por isso ela só lê, e só até a data marcada; gravar e apagar exigem login.
+    const chaveNoPrazo = chaveAntigaAte && agora() < chaveAntigaAte;
+    if (chaveNoPrazo && req.method === 'GET' && chaveConfere(req.headers['x-api-key'])) {
       req.usuario = null;
+      req.chaveAntiga = true;
       return next();
     }
     console.warn(`${new Date().toISOString()} ${req.id} AUTH negada em ${req.rota}`);

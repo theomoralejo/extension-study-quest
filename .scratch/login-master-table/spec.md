@@ -31,7 +31,7 @@ sequenceDiagram
 
 - **A senha vai só para a Master Table**, como no login do próprio app. A API das respostas nunca a vê.
 - **O token PB (acesso total à Master Table) não fica na extensão.** O que fica é um token próprio, que só
-  abre as respostas rápidas, guardado como hash SHA-256 na tabela `extension_sessions` (MySQL), 30 dias.
+  abre as respostas rápidas, guardado como hash SHA-256 na tabela `extension_sessions` (MySQL), 14 dias.
 - **Quem pode usar** é a feature flag `study_quest_extension` da Master Table (Users & Roles → Feature flags),
   regra RBAC explícita (flag desligada ou listas vazias = ninguém), conferida no servidor da Master Table.
   Nasce com todos os papéis do app (o mesmo público de hoje).
@@ -50,15 +50,19 @@ sequenceDiagram
 - `GET /api/auth/session` (Bearer) → 200 `{name, email, expiresAt}` · 401.
 - `DELETE /api/auth/session` (Bearer) → 204.
 - `/api/replies*`, `/api/categories*`: `Authorization: Bearer <token>`; sem sessão válida → 401 `{error, code:"sessao"}`.
-- Transição: `ACEITAR_CHAVE_ANTIGA=1` no `.env` aceita a `x-api-key` antiga enquanto o time troca de versão;
-  cada uso vai ao log. Desligar assim que o time estiver na versão da loja.
+- Transição: `ACEITAR_CHAVE_ANTIGA_ATE=AAAA-MM-DD` no `.env` da API deixa a `x-api-key` antiga só LER (GET), e só até essa data (UTC); gravar e apagar exigem login. Passada a data, ela é recusada sozinha. Cada uso aparece no log como `CHAVE_ANTIGA`.
+- `POST /api/auth/session`: token PB com formato de JWT, 10 logins por IP por minuto (429), no máximo 10 conferências
+  simultâneas na Master Table (503), no máximo 5 sessões por pessoa.
 
 ### Extensão
 - Sessão em `storage.local` na chave `sqSessao` = `{token, name, email, expiresAt}`.
 - 401 de qualquer chamada apaga `sqSessao` e volta para a tela de login.
 
 ## Limites aceitos
-- Tirar a flag de alguém na Master Table vale no próximo login; a sessão já emitida dura até 30 dias
+- O servidor das respostas recebe o token da Master Table de quem entra (só em memória, para conferir; não grava nem loga).
+  Quem tomar aquele container poderia colher esses tokens. Melhoria futura: a Master Table emitir uma credencial curta
+  só para essa troca (revisão de segurança de 22/nov/2026).
+- Tirar a flag de alguém na Master Table vale no próximo login; a sessão já emitida dura até 14 dias
   (revogar antes: apagar as linhas dela em `extension_sessions`).
 - `storage.local` é legível pelos content scripts da própria extensão (não pela página do Zoho). Aceito porque
   o token só abre as respostas rápidas.

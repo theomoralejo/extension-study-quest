@@ -6,7 +6,7 @@
 3. Pronto: o topo do popup mostra **Conectado como** e o seu nome. As respostas rápidas aparecem no popup e no painel dentro do Zoho (se o painel já estava aberto, ele carrega sozinho).
 4. Para sair, clique em **Sair**, ao lado do seu nome.
 
-O login vale por até 30 dias. Quando ele vence, o popup volta ao card **Entrar** com o aviso "Sua sessão expirou" e o painel do Zoho pede para entrar de novo.
+O login vale por até 14 dias. Quando ele vence, o popup volta ao card **Entrar** com o aviso "Sua sessão expirou" e o painel do Zoho pede para entrar de novo.
 
 | Mensagem | O que fazer |
 |---|---|

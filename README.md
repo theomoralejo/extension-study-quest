@@ -56,9 +56,7 @@ popup/painel ──Authorization: Bearer <token>──▶ API /api/replies*, /ap
   `mfaId`, não suportada), muitas tentativas (429), conta sem acesso (403 da API, com a mensagem da Master Table),
   sem conexão. Toda chamada do login tem tempo limite de 15 s.
 
-**Transição no servidor:** `ACEITAR_CHAVE_ANTIGA=1` no `.env` da API aceita a `x-api-key` antiga enquanto o time
-troca de versão; cada uso vai ao log. Desligar assim que o time estiver na versão da loja. Enquanto estiver ligada,
-a chave antiga (que continua no histórico público do git) ainda abre a API.
+**Transição no servidor:** `ACEITAR_CHAVE_ANTIGA_ATE=AAAA-MM-DD` no `.env` da API deixa a `x-api-key` antiga só LER (GET), e só até essa data (UTC); gravar e apagar exigem login. Passada a data, ela é recusada sozinha. Cada uso aparece no log como `CHAVE_ANTIGA`. A chave antiga continua no histórico público do git: por isso ela não grava.
 
 ---
 
@@ -209,7 +207,7 @@ botões da tela e mostra um aviso pedindo F5. Prova: bloco 4 de `tests/e2e-exten
 `backend-api/` roda separado da extensão. Configuração por variável de
 ambiente — copie `backend-api/.env.example` para `.env` e preencha.
 A lista exata (banco, Master Table, sessões em `extension_sessions`) fica no `backend-api/.env.example`,
-reescrito junto com o login. `ACEITAR_CHAVE_ANTIGA=1` liga a transição descrita em [Login](#login-master-table).
+reescrito junto com o login. `ACEITAR_CHAVE_ANTIGA_ATE` liga a transição descrita em [Login](#login-master-table).
 
 A API falha alto no boot se faltar um obrigatório. Isso é intencional: um
 fallback embutido no código significaria credencial conhecida em produção.

@@ -26,7 +26,7 @@ como no login do próprio app. A extensão não guarda a senha.
 
 - No login, o token temporário devolvido pela Master Table, para o servidor confirmar quem você é e se a sua conta
   tem acesso à extensão. O servidor devolve um token próprio da extensão, que só abre as respostas rápidas e vale
-  até 30 dias; ele é guardado no servidor apenas como hash.
+  até 14 dias; ele é guardado no servidor apenas como hash.
 - No uso, as respostas rápidas que você cria, edita ou apaga (título, texto, categoria). Cada resposta leva o nome
   da pessoa logada como autor, visível para a equipe.
 - Ao clicar em **Sair**, o pedido para encerrar a sessão.
@@ -45,6 +45,6 @@ fora do pacote e não compartilha dados com terceiros além da Master Table e do
 
 ## Retenção, acesso e contato
 
-As respostas rápidas ficam no servidor enquanto a equipe as usar. As sessões vencem em 30 dias. O acesso à
+As respostas rápidas ficam no servidor enquanto a equipe as usar. As sessões vencem em 14 dias. O acesso à
 extensão é controlado pela Study Quest na Master Table. Para suporte, dúvidas ou pedidos de exclusão de dados,
 escreva para `info@attriostudio.com`. Mudanças relevantes nesta política serão publicadas nesta página.
